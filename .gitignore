@@ -1,0 +1,104 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# workhive .gitignore
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Project Specific
+.workhive/
+.worktrees/
+.history
+.reports
+docs/
+
+# ──────────────────────────────────────────────────
+# Development & Debugging
+# ──────────────────────────────────────────────────
+
+# Test generated temporary files
+test/tmp/
+test/*.log
+
+# Debug files
+*.debug
+debug.log
+
+# ──────────────────────────────────────────────────
+# Operating System Files
+# ──────────────────────────────────────────────────
+
+# macOS
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# ──────────────────────────────────────────────────
+# Editors & IDEs
+# ──────────────────────────────────────────────────
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains (IntelliJ, WebStorm, etc.)
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+.*.sw?
+
+# Emacs
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ──────────────────────────────────────────────────
+# AI Assistant Instructions & Config
+# ──────────────────────────────────────────────────
+.cursor/
+.claude
+.claude/
+.gemini/
+.kiro/
+.agent/
+CLAUDE.md
+GEMINI.md
+ANTIGRAVITY.md
+WARP.md
+AGENTS.md
+.cursorrules
+
+# ──────────────────────────────────────────────────
+# Backups, Temporaries & Archives
+# ──────────────────────────────────────────────────
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Temporary files
+*.tmp
+*.temp
+
+# Archives
+*.zip
+*.tar.gz
+*.tgz

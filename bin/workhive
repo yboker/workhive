@@ -1,0 +1,709 @@
+#!/usr/bin/env bash
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# workhive - Cross-platform Worktree Manager
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+set -eEuo pipefail
+
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
+    echo "FATAL: workhive requires Bash 4.3+, found ${BASH_VERSION}" >&2
+    exit 1
+fi
+
+# ──────────────────────────────────────────────────
+# Ultra-fast path: --version (no modules needed)
+# ──────────────────────────────────────────────────
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$BIN_DIR/.." && pwd)"
+export LIB_DIR="$ROOT_DIR/lib"
+
+if [[ "${1:-}" == "--version" || "${1:-}" == "-v" ]]; then
+    source "$LIB_DIR/infra/config/loader.sh" 2>/dev/null || true
+    _os=$(uname -s 2>/dev/null || echo unknown)
+    [[ "$_os" == "Darwin" ]] && _os="macOS"
+    echo "workhive v${WORKHIVE_VERSION:-0.0.0} ($_os)"
+    exit 0
+fi
+
+# ──────────────────────────────────────────────────
+# Environment initialization
+# ──────────────────────────────────────────────────
+APP_NAME="${0##*/}"
+
+# Load core common library
+if [[ -f "$LIB_DIR/utils/common.sh" ]]; then
+    source "$LIB_DIR/utils/common.sh"
+else
+    echo "FATAL: lib/utils/common.sh not found"
+    exit 1
+fi
+
+# Load minimal infrastructure (platform detection + cache + config — all fast)
+source "$LIB_DIR/infra/platform/detector.sh"
+source "$LIB_DIR/infra/cache/manager.sh"
+source "$LIB_DIR/infra/config/loader.sh"
+
+# Heavy modules (deps) are loaded lazily via _load_full_stack()
+_FULL_STACK_LOADED=false
+_load_full_stack() {
+    [[ "$_FULL_STACK_LOADED" == true ]] && return 0
+    source "$LIB_DIR/infra/deps/manager.sh"
+    _FULL_STACK_LOADED=true
+}
+
+# ──────────────────────────────────────────────────
+# Fast language detection: sed on config files (no yq, no git)
+# Falls back to git-root lookup only if current-dir scan misses
+# ──────────────────────────────────────────────────
+if [[ -z "${WORKHIVE_LANG:-}" ]]; then
+    _wh_lang_sed='s/^language:[[:space:]]*"\{0,1\}\([a-z]*\)"\{0,1\}/\1/p'
+    # 1. Try .workhive/config.yaml relative to cwd (covers most cases)
+    if [[ -f ".workhive/config.yaml" ]]; then
+        WORKHIVE_LANG=$(sed -n "$_wh_lang_sed" ".workhive/config.yaml" 2>/dev/null | head -1)
+    fi
+    # 2. Try git root (only if above missed — adds ~15ms for git rev-parse)
+    if [[ -z "${WORKHIVE_LANG:-}" ]]; then
+        _wh_groot=$(git rev-parse --show-toplevel 2>/dev/null) || true
+        if [[ -n "$_wh_groot" && -f "$_wh_groot/.workhive/config.yaml" ]]; then
+            WORKHIVE_LANG=$(sed -n "$_wh_lang_sed" "$_wh_groot/.workhive/config.yaml" 2>/dev/null | head -1)
+        fi
+        # 2b. Inside a worktree: git-common-dir points to the main repo's .git
+        if [[ -z "${WORKHIVE_LANG:-}" && -n "$_wh_groot" ]]; then
+            _wh_common=$(git rev-parse --git-common-dir 2>/dev/null) || true
+            if [[ -n "$_wh_common" && "$_wh_common" != ".git" ]]; then
+                _wh_main="${_wh_common%/.git}"
+                if [[ -f "$_wh_main/.workhive/config.yaml" ]]; then
+                    WORKHIVE_LANG=$(sed -n "$_wh_lang_sed" "$_wh_main/.workhive/config.yaml" 2>/dev/null | head -1)
+                fi
+                unset _wh_main
+            fi
+            unset _wh_common
+        fi
+        unset _wh_groot
+    fi
+    # 3. Try global config
+    if [[ -z "${WORKHIVE_LANG:-}" ]]; then
+        _wh_gcfg="${XDG_CONFIG_HOME:-$HOME/.config}/workhive/config.yaml"
+        [[ -f "$_wh_gcfg" ]] && WORKHIVE_LANG=$(sed -n "$_wh_lang_sed" "$_wh_gcfg" 2>/dev/null | head -1)
+        unset _wh_gcfg
+    fi
+    [[ -z "${WORKHIVE_LANG:-}" || "${WORKHIVE_LANG:-}" == "null" ]] && WORKHIVE_LANG="en"
+    unset _wh_lang_sed
+fi
+
+# Load i18n (must be after WORKHIVE_LANG is set)
+source "${LIB_DIR}/utils/i18n.sh"
+
+# ERR trap: only log stack-level "unexpected error" when the command path
+# did not already emit a user-facing error via log_error.
+_workhive_err_trap() {
+    local rc=$?
+    if [[ "${_WORKHIVE_EXPECTED_ERROR_LOGGED:-false}" == "true" ]]; then
+        _WORKHIVE_EXPECTED_ERROR_LOGGED=false
+        return "$rc"
+    fi
+
+    local err_src="${BASH_SOURCE[1]:-${BASH_SOURCE[0]:-unknown}}"
+    local err_line="${BASH_LINENO[0]:-${LINENO}}"
+    log_error "$(printf "$(_i18n BIN_ERR_UNEXPECTED_FMT)" "$err_src" "$err_line")" 2>/dev/null || true
+    return "$rc"
+}
+trap '_workhive_err_trap' ERR
+
+# Wire i18n config accessor (decouple utils→infra dependency)
+i18n_set_config_accessor "config_exists" "config_get"
+
+# ──────────────────────────────────────────────────
+# Help information
+# ──────────────────────────────────────────────────
+show_help() {
+    # Use _i18n_raw to avoid 25+ subshell forks inside heredoc
+    local _l="${WORKHIVE_LANG:-en}"
+    local _K _v
+    _i18n_v() { _K="_I18N_${_l}_${1}"; _v="${!_K:-}"; if [[ -z "$_v" ]]; then _K="_I18N_en_${1}"; _v="${!_K:-$1}"; fi; }
+
+    _i18n_v HELP_DESC;            local h_desc="$_v"
+    _i18n_v HELP_USAGE;           local h_usage="$_v"
+    _i18n_v HELP_COMMANDS;        local h_cmds="$_v"
+    _i18n_v HELP_CMD_INIT;        local h_init="$_v"
+    _i18n_v HELP_CMD_CONFIG;      local h_config="$_v"
+    _i18n_v HELP_CMD_TOOLS;       local h_tools="$_v"
+    _i18n_v HELP_CMD_OPEN;        local h_open="$_v"
+    _i18n_v HELP_CMD_ATTACH;      local h_attach="$_v"
+    _i18n_v HELP_CMD_CLOSE;       local h_close="$_v"
+    _i18n_v HELP_CMD_PANE;        local h_pane="$_v"
+    _i18n_v HELP_CMD_LIST;        local h_list="$_v"
+    _i18n_v HELP_CMD_REMOVE;      local h_remove="$_v"
+    _i18n_v HELP_CMD_RENAME;      local h_rename="$_v"
+    _i18n_v HELP_CMD_DOCTOR;      local h_doctor="$_v"
+    _i18n_v HELP_CMD_GC;          local h_gc="$_v"
+    _i18n_v HELP_CMD_DESTROY;     local h_destroy="$_v"
+    _i18n_v HELP_CMD_UPGRADE;     local h_upgrade="$_v"
+    _i18n_v HELP_CMD_LOG;         local h_log="$_v"
+    _i18n_v HELP_CMD_SHELL;       local h_shell="$_v"
+    _i18n_v HELP_GLOBAL_OPTIONS;  local h_gopts="$_v"
+    _i18n_v HELP_OPT_VERSION;    local h_ver="$_v"
+    _i18n_v HELP_OPT_HELP;       local h_help="$_v"
+    _i18n_v HELP_OPT_DEBUG;      local h_debug="$_v"
+    _i18n_v HELP_EXAMPLES;       local h_examples="$_v"
+    _i18n_v HELP_EXAMPLE_INIT;   local h_ex_init="$_v"
+    _i18n_v HELP_EXAMPLE_OPEN;   local h_ex_open="$_v"
+    _i18n_v HELP_EXAMPLE_LS;     local h_ex_ls="$_v"
+    _i18n_v HELP_EXAMPLE_ATTACH; local h_ex_attach="$_v"
+    _i18n_v HELP_EXAMPLE_RM;     local h_ex_rm="$_v"
+    _i18n_v HELP_CMD_DETAILS;    local h_details="$_v"
+
+    cat <<EOF
+$APP_NAME - $h_desc
+
+$h_usage $APP_NAME <command> [arguments]
+
+$h_cmds:
+  init                $h_init
+  config              $h_config
+  tools               $h_tools
+  open <worktree>     $h_open
+  attach <worktree>   $h_attach
+  close               $h_close
+  pane <subcommand>   $h_pane
+  list (ls)           $h_list
+  remove (rm)         $h_remove
+  rename              $h_rename
+  doctor              $h_doctor
+  gc                  $h_gc
+  destroy             $h_destroy
+  upgrade             $h_upgrade
+  shell <subcommand>  $h_shell
+  log                 $h_log
+
+$h_gopts:
+  -v, --version       $h_ver
+  -h, --help          $h_help
+  --debug             $h_debug
+
+$h_examples:
+  $APP_NAME init                          # $h_ex_init
+  $APP_NAME open feature-x               # $h_ex_open
+  $APP_NAME ls                            # $h_ex_ls
+  $APP_NAME attach feature-x             # $h_ex_attach
+  $APP_NAME rm feature-x                 # $h_ex_rm
+
+$h_details $APP_NAME <command> --help
+EOF
+}
+
+show_version() {
+    echo "$APP_NAME v${WORKHIVE_VERSION} ($(platform_get_name))"
+}
+
+# ──────────────────────────────────────────────────
+# Command dispatch
+# ──────────────────────────────────────────────────
+_WORKHIVE_ORIG_ARGS=("$@")
+COMMAND="${1:-}"
+SUBARG="${2:-}"
+
+_has_machine_format_flag() {
+    local _prev=""
+    local _arg=""
+    for _arg in "${_WORKHIVE_ORIG_ARGS[@]+"${_WORKHIVE_ORIG_ARGS[@]}"}"; do
+        if [[ "$_prev" == "--format" ]]; then
+            [[ "$_arg" != "table" ]] && return 0
+        fi
+        if [[ "$_arg" == --format=* ]]; then
+            local _fmt="${_arg#--format=}"
+            [[ "$_fmt" != "table" ]] && return 0
+        fi
+        _prev="$_arg"
+    done
+    return 1
+}
+
+# Machine-readable outputs must keep stderr clean from progress UI.
+if _has_machine_format_flag; then
+    export WORKHIVE_MACHINE_OUTPUT=1
+fi
+
+# Debug mode
+if [[ "${COMMAND}" == "--debug" ]]; then
+    export WORKHIVE_DEBUG=1
+    shift
+    COMMAND="${1:-}"
+    SUBARG="${2:-}"
+fi
+
+# ──────────────────────────────────────────────────
+# Command capability matrix
+# Centralizes startup classification for all commands.
+# Keys: needs_git, needs_init, needs_tmux, needs_full_stack, spinner_policy
+# Returns 0 (true) / 1 (false) for boolean keys, or prints value for string keys.
+# ──────────────────────────────────────────────────
+_command_capability() {
+    local cmd="$1" key="$2"
+    local sub="${SUBARG:-}"
+
+    # L0: ultra-light — no git, no init, no tmux, no full stack, no spinner
+    case "$cmd" in
+        --help|-h|--version|-v|"")
+            case "$key" in
+                needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        shell|_internal_completions)
+            case "$key" in
+                needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+    esac
+
+    # Subcommand --help is always L0
+    if [[ "$sub" == "--help" || "$sub" == "-h" ]]; then
+        case "$key" in
+            needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+            spinner_policy) echo "none"; return 0 ;;
+        esac
+    fi
+
+    # L1: query commands — need git (some exempt), no spinner
+    case "$cmd" in
+        list|ls)
+            case "$key" in
+                needs_git) return 0 ;;
+                needs_init) return 0 ;;
+                needs_tmux) return 0 ;;
+                needs_full_stack) return 0 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        log)
+            case "$key" in
+                needs_git) return 0 ;;
+                needs_init) return 0 ;;
+                needs_tmux) return 0 ;;
+                needs_full_stack) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        tools)
+            case "$key" in
+                needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        config)
+            case "$key" in
+                needs_git|needs_tmux|needs_full_stack) return 1 ;;
+                needs_init) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        doctor)
+            case "$key" in
+                needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+    esac
+
+    # L2: transactional commands — need everything
+    case "$cmd" in
+        pane)
+            case "$key" in
+                needs_git) return 0 ;;
+                needs_init) return 0 ;;
+                needs_tmux) return 0 ;;
+                needs_full_stack)
+                    case "$sub" in
+                        current|cur) return 1 ;; # lightweight query path
+                        *) return 0 ;;
+                    esac
+                    ;;
+                spinner_policy)
+                    case "$sub" in
+                        current|cur) echo "none" ;; # avoid startup spinner for quick query
+                        *) echo "delayed" ;;
+                    esac
+                    return 0
+                    ;;
+            esac
+            ;;
+        open|attach|remove|rm|gc|close|rename|destroy)
+            case "$key" in
+                needs_git) return 0 ;;
+                needs_init)
+                    [[ "$cmd" == "close" || "$cmd" == "destroy" ]] && return 1
+                    return 0
+                    ;;
+                needs_tmux)
+                    [[ "$cmd" == "destroy" ]] && return 1
+                    return 0
+                    ;;
+                needs_full_stack) return 0 ;;
+                spinner_policy) echo "delayed"; return 0 ;;
+            esac
+            ;;
+        init)
+            case "$key" in
+                needs_git|needs_init|needs_tmux) return 1 ;;
+                needs_full_stack) return 0 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        upgrade)
+            case "$key" in
+                needs_git|needs_init|needs_tmux) return 1 ;;
+                needs_full_stack) return 0 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+        _internal_save|_internal_save_runtime_debounced)
+            case "$key" in
+                needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+                spinner_policy) echo "none"; return 0 ;;
+            esac
+            ;;
+    esac
+
+    # Unknown commands: let them through to the dispatch block which handles errors
+    case "$key" in
+        needs_git|needs_init|needs_tmux|needs_full_stack) return 1 ;;
+        spinner_policy) echo "none"; return 0 ;;
+    esac
+}
+
+# Anti-lockout: commands that must not be blocked by config schema failures.
+# Users need these to inspect, edit, and repair broken configurations.
+_is_schema_exempt_command() {
+    case "$COMMAND" in
+        init|config|close) return 0 ;;
+        pane)
+            [[ "${SUBARG:-}" == "close" ]] && return 0
+            return 1
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# ──────────────────────────────────────────────────
+# Initialization check (exempt: init, help, version)
+# ──────────────────────────────────────────────────
+check_init() {
+    _command_capability "$COMMAND" needs_init || return 0
+
+    if ! config_exists; then
+        log_warn "$(_i18n ERR_NOT_INITIALIZED)"
+        log_info "$(_i18n ERR_RUN_INIT)"
+        echo "  $APP_NAME init"
+        exit 1
+    fi
+
+    local _project_file _global_file
+    _project_file=$(config_get_project_file)
+    _global_file=$(config_get_global_file)
+    if [[ -f "$_project_file" ]] && ! config_sync_schema_file "$_project_file" "project"; then
+        if _is_schema_exempt_command; then
+            log_warn "Project config has schema issues: $_project_file (proceeding anyway)"
+        else
+            log_error "Invalid project config: $_project_file"
+            exit 1
+        fi
+    fi
+    if [[ -f "$_global_file" ]] && ! config_sync_schema_file "$_global_file" "global"; then
+        if _is_schema_exempt_command; then
+            log_warn "Global config has schema issues: $_global_file (proceeding anyway)"
+        else
+            log_error "Invalid global config: $_global_file"
+            exit 1
+        fi
+    fi
+}
+
+# ──────────────────────────────────────────────────
+# Global configuration check
+# Ensures global config exists before running commands that depend on it.
+# Exempt: init --global, doctor, upgrade, destroy, shell,
+#         _internal_save, _internal_save_runtime_debounced, and --help paths.
+# ──────────────────────────────────────────────────
+check_global_config() {
+    case "$COMMAND" in
+        doctor|upgrade|destroy|shell|_internal_save|_internal_save_runtime_debounced|_internal_completions)
+            return 0
+            ;;
+        init)
+            # init --global creates global config, so it must be exempt.
+            # Plain "init" (project init) requires global config first.
+            local _a
+            for _a in "${_WORKHIVE_ORIG_ARGS[@]+"${_WORKHIVE_ORIG_ARGS[@]}"}"; do
+                [[ "$_a" == "--global" ]] && return 0
+            done
+            ;;
+    esac
+    [[ "${WORKHIVE_SKIP_GLOBAL_CHECK:-}" == "1" ]] && return 0
+
+    if ! config_global_ready; then
+        if config_global_exists && config_global_init_in_progress; then
+            log_warn "Global configuration initialization is in progress. Please retry shortly."
+            exit 1
+        fi
+        source "$LIB_DIR/utils/tui.sh" 2>/dev/null || true
+        log_warn "$(_i18n MSG_NO_GLOBAL_CONFIG)"
+        echo ""
+        local _setup_global_rc=1
+        if [[ -t 0 ]]; then
+            confirm_action "$(_i18n ASK_SETUP_GLOBAL_CONFIG)" false "Y" 1
+            _setup_global_rc=$?
+        fi
+        if [[ $_setup_global_rc -eq 130 ]]; then
+            exit 130
+        fi
+        if [[ $_setup_global_rc -eq 0 ]]; then
+            echo ""
+            # shellcheck source=/dev/null
+            source "$LIB_DIR/app/commands/init_command.sh"
+            WORKHIVE_SKIP_GLOBAL_CHECK=1 init_command_execute --global
+            local rc=$?
+            [[ $rc -ne 0 ]] && exit $rc
+            echo ""
+            log_info "$(_i18n MSG_GLOBAL_CONFIG_DONE_RERUN)"
+            echo "  $APP_NAME ${_WORKHIVE_ORIG_ARGS[*]}"
+            exit 0
+        else
+            echo ""
+            log_info "$(_i18n HINT_SETUP_GLOBAL)"
+            exit 1
+        fi
+    fi
+
+    local _global_file
+    _global_file=$(config_get_global_file)
+    if [[ -f "$_global_file" ]] && ! config_sync_schema_file "$_global_file" "global"; then
+        if _is_schema_exempt_command; then
+            log_warn "Global config has schema issues: $_global_file (proceeding anyway)"
+        else
+            log_error "Invalid global config: $_global_file"
+            exit 1
+        fi
+    fi
+}
+
+# ──────────────────────────────────────────────────
+# Git repository pre-check (project-level operations require a git repo)
+# Uses unified path guard (_is_git_init_allowed) and shared init helpers.
+# ──────────────────────────────────────────────────
+check_git_repo() {
+    _command_capability "$COMMAND" needs_git || return 0
+
+    if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+        if ! _is_git_init_allowed "$(pwd)"; then
+            exit 1
+        fi
+        if ! _git_init_guarded true; then
+            exit 1
+        fi
+    elif ! git rev-parse HEAD &>/dev/null; then
+        if ! _git_ensure_initial_commit true; then
+            exit 1
+        fi
+    fi
+
+    # Populate _WORKHIVE_GIT_ROOT early (non-subshell call preserves the global)
+    if [[ -z "${_WORKHIVE_GIT_ROOT:-}" ]]; then
+        _git_root >/dev/null 2>&1 || true
+    fi
+}
+
+# ──────────────────────────────────────────────────
+# tmux pre-check (commands requiring tmux must verify it)
+# ──────────────────────────────────────────────────
+check_tmux() {
+    _command_capability "$COMMAND" needs_tmux || return 0
+
+    if ! check_cmd tmux; then
+        log_error "$(printf "$(_i18n BIN_ERR_TMUX_REQUIRED_FMT)" "$(_i18n HELP_DESC 2>/dev/null || echo 'workhive')")"
+        log_info "$(_i18n BIN_HINT_INSTALL_TMUX)"
+        exit 1
+    fi
+
+    source "$LIB_DIR/infra/adapters/terminal/factory.sh"
+    terminal_adapter_init 2>/dev/null || true
+}
+
+# Fast path: --help needs no git/tmux/init/plugin checks
+if [[ "$COMMAND" == "--help" || "$COMMAND" == "-h" || -z "$COMMAND" ]]; then
+    show_help
+    exit 0
+fi
+
+# Fast path: internal completions and shell need no full stack / spinner / git / tmux checks
+if [[ "$COMMAND" == "_internal_completions" ]]; then
+    export WORKHIVE_FILE_LOG_MODE="startup-light"
+    shift
+    source "$LIB_DIR/app/commands/completions_command.sh"
+    completions_command_execute "$@"
+    exit $?
+fi
+
+if [[ "$COMMAND" == "shell" ]]; then
+    export WORKHIVE_FILE_LOG_MODE="startup-light"
+    shift
+    source "$LIB_DIR/app/commands/shell_command.sh"
+    shell_command_execute "$@"
+    exit $?
+fi
+
+# init --global should not be blocked/noised by project config validation.
+if [[ "$COMMAND" == "init" ]]; then
+    for _arg in "${_WORKHIVE_ORIG_ARGS[@]+"${_WORKHIVE_ORIG_ARGS[@]}"}"; do
+        if [[ "$_arg" == "--global" ]]; then
+            export WORKHIVE_SKIP_PROJECT_CONFIG_VALIDATE=1
+            break
+        fi
+    done
+    unset _arg
+fi
+
+_is_help_subarg=false
+_is_any_help_arg=false
+if [[ "$SUBARG" == "--help" || "$SUBARG" == "-h" ]]; then
+    _is_help_subarg=true
+    _is_any_help_arg=true
+else
+    for _chk_arg in "${_WORKHIVE_ORIG_ARGS[@]+"${_WORKHIVE_ORIG_ARGS[@]}"}"; do
+        [[ "$_chk_arg" == "--help" || "$_chk_arg" == "-h" ]] && { _is_any_help_arg=true; break; }
+    done
+    unset _chk_arg
+fi
+
+# Ultra-fast --help for subcommands: load only the help index (no service/domain layer)
+if [[ "$_is_help_subarg" == true ]]; then
+    source "$LIB_DIR/app/shared/help_index.sh" 2>/dev/null || true
+fi
+
+# Validate command name before running preflight checks
+_is_known_command() {
+    case "$1" in
+        init|open|attach|list|ls|remove|rm|rename|pane|config|tools|\
+close|doctor|gc|destroy|upgrade|log|shell|\
+_internal_completions|\
+_internal_save|_internal_save_runtime_debounced|--version|-v|--help|-h|"")
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+if [[ "$_is_any_help_arg" == false ]]; then
+    # Reject unknown commands early, before global config / git / tmux checks
+    if ! _is_known_command "$COMMAND"; then
+        log_error "$(_i18n ERR_UNKNOWN_CMD) $COMMAND"
+        case "$COMMAND" in
+            split)
+                log_info "$(_i18n BIN_HINT_USE_PANE_SPLIT)"
+                ;;
+            layout)
+                log_info "$(_i18n BIN_HINT_USE_CONFIG_LAYOUT)"
+                ;;
+        esac
+        echo ""
+        show_help
+        exit 1
+    fi
+
+    _sp_policy=$(_command_capability "$COMMAND" spinner_policy)
+
+    if ! _command_capability "$COMMAND" needs_full_stack && [[ "$COMMAND" != "_internal_save" && "$COMMAND" != "_internal_save_runtime_debounced" ]]; then
+        export WORKHIVE_FILE_LOG_MODE="startup-light"
+    fi
+
+    if [[ "$_sp_policy" == "delayed" && "${WORKHIVE_MACHINE_OUTPUT:-0}" != "1" ]]; then
+        source "$LIB_DIR/utils/progress.sh"
+        _spinner_regex='^(init|config|close)$'
+        if [[ ! "$COMMAND" =~ $_spinner_regex ]]; then
+            progress_start "$(_i18n MSG_LOADING 2>/dev/null || echo 'Loading...')"
+        fi
+    fi
+
+    if _command_capability "$COMMAND" needs_full_stack; then
+        _load_full_stack
+    fi
+
+    [[ "$_sp_policy" == "delayed" ]] && progress_stop 2>/dev/null || true
+
+    check_global_config
+    check_git_repo
+    check_tmux
+    check_init
+
+fi
+
+# Dispatch helper: source command file and execute, or show help from index
+_dispatch_cmd() {
+    local cmd_name="$1" cmd_file="$2"
+    shift 2
+    _WORKHIVE_EXPECTED_ERROR_LOGGED=false
+    if [[ "$_is_help_subarg" == true ]]; then
+        "${cmd_name}_command_help"
+    else
+        # shellcheck source=/dev/null
+        source "$LIB_DIR/app/commands/${cmd_file}"
+        "${cmd_name}_command_execute" "$@"
+    fi
+}
+
+case "$COMMAND" in
+    init)           shift; _dispatch_cmd init init_command.sh "$@" ;;
+    open)           shift; _dispatch_cmd open open_command.sh "$@" ;;
+    attach)         shift; _dispatch_cmd attach attach_command.sh "$@" ;;
+    list|ls)        shift; _dispatch_cmd list list_command.sh "$@" ;;
+    remove|rm)      shift; _dispatch_cmd remove remove_command.sh "$@" ;;
+    rename)         shift; _dispatch_cmd rename rename_command.sh "$@" ;;
+    pane)           shift; _dispatch_cmd pane pane_command.sh "$@" ;;
+    config)         shift; _dispatch_cmd config config_command.sh "$@" ;;
+    tools)          shift; _dispatch_cmd tools tools_command.sh "$@" ;;
+    close)          shift; _dispatch_cmd close close_command.sh "$@" ;;
+    doctor)         shift; _dispatch_cmd doctor doctor_command.sh "$@" ;;
+    gc)             shift; _dispatch_cmd gc gc_command.sh "$@" ;;
+    destroy)        shift; _dispatch_cmd destroy destroy_command.sh "$@" ;;
+    upgrade)        shift; _dispatch_cmd upgrade upgrade_command.sh "$@" ;;
+    log)         shift; _dispatch_cmd log log_command.sh "$@" ;;
+    shell)       shift; _dispatch_cmd shell shell_command.sh "$@" ;;
+    _internal_completions) shift; _dispatch_cmd completions completions_command.sh "$@" ;;
+    _internal_save)
+        source "$LIB_DIR/domain/services/session_service.sh"
+        source "$LIB_DIR/infra/persistence/manager.sh"
+        if ! persistence_is_enabled; then
+            exit 0
+        fi
+        # Accept prefix from auto-save hook/timer (set at registration time).
+        # This bypasses session_get_prefix()'s cwd-dependent computation and
+        # guarantees the same prefix that was used to create the session.
+        if [[ -n "${WORKHIVE_SAVE_PREFIX:-}" ]]; then
+            _SESSION_PREFIX_CACHED="$WORKHIVE_SAVE_PREFIX"
+        fi
+        persistence_save 2>/dev/null || true
+        ;;
+    _internal_save_runtime_debounced)
+        source "$LIB_DIR/domain/services/session_service.sh"
+        source "$LIB_DIR/infra/persistence/manager.sh"
+        if ! persistence_is_enabled; then
+            exit 0
+        fi
+        if [[ -n "${WORKHIVE_SAVE_PREFIX:-}" ]]; then
+            _SESSION_PREFIX_CACHED="$WORKHIVE_SAVE_PREFIX"
+        fi
+        persistence_save_runtime_debounced "${WORKHIVE_AUTO_SAVE_SESSION:-}" "${WORKHIVE_AUTO_SAVE_DEBOUNCE:-}" "${WORKHIVE_AUTO_SAVE_TRIGGER:-unknown}" 2>/dev/null || true
+        ;;
+    --version|-v)
+        show_version
+        ;;
+    --help|-h|"")
+        show_help
+        ;;
+    *)
+        log_error "$(_i18n ERR_UNKNOWN_CMD) $COMMAND"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac
