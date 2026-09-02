@@ -1,0 +1,12 @@
+---
+source: crates/workhive-core/tests/snapshot_tests.rs
+assertion_line: 40
+expression: summary
+---
+{
+  "project_name": "my-project",
+  "project_root": "/Users/dev/my-project",
+  "config_path": "/Users/dev/my-project/.workhive/config.toml",
+  "last_opened_at": "2026-04-14T00:00:00Z",
+  "last_updated_at": null
+}

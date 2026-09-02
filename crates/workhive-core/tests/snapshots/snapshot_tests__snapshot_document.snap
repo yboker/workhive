@@ -1,0 +1,44 @@
+---
+source: crates/workhive-core/tests/snapshot_tests.rs
+assertion_line: 103
+expression: doc
+---
+{
+  "schema_version": 2,
+  "identity": {
+    "instance_id": "test-instance-001",
+    "project": "proj",
+    "workspace": "feat-auth",
+    "server_name": "wh-proj",
+    "session_name": "wh--proj--feat-auth"
+  },
+  "meta": {
+    "runtime_backend": "tmux",
+    "platform": "macos",
+    "captured_at": "2026-04-20T12:00:00Z",
+    "generation": 1
+  },
+  "units": [
+    {
+      "index": 0,
+      "active": true,
+      "cwd": "/Users/dev/proj",
+      "launch": {
+        "kind": "shell",
+        "executable": "zsh",
+        "args": []
+      }
+    },
+    {
+      "index": 1,
+      "active": false,
+      "title": "editor",
+      "cwd": "/Users/dev/proj",
+      "launch": {
+        "kind": "exec",
+        "program": "vim",
+        "args": []
+      }
+    }
+  ]
+}

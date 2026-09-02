@@ -1,0 +1,6 @@
+---
+source: crates/workhive-core/tests/snapshot_tests.rs
+assertion_line: 69
+expression: id
+---
+feat-auth-next
