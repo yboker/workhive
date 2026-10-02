@@ -1,0 +1,4 @@
+# workhive runtime directory
+/.workhive/
+/.workhive.init.lock
+/.workhive.staging.*

@@ -1,0 +1,22 @@
+[package]
+name = "workhive-core"
+description = "Domain model, port traits, and error types for workhive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+miette = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+camino = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+toml = { workspace = true }
+tempfile = { workspace = true }

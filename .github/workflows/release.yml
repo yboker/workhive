@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    name: Verify tag matches Cargo.toml version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare tag with workspace version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          cargo_version="$(python3 -c '
+          import tomllib
+          with open("Cargo.toml", "rb") as f:
+              manifest = tomllib.load(f)
+          print(manifest["workspace"]["package"]["version"])
+          ')"
+          echo "tag=$tag_version cargo=$cargo_version"
+          if [ "$tag_version" != "$cargo_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match workspace.package.version $cargo_version"
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: verify-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          # macos-latest is arm64; Intel macOS builds run natively on the
+          # Intel runner so the artifact is built and smoke-testable on its
+          # own architecture.
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package artifact
+        run: |
+          version="${GITHUB_REF_NAME}"
+          artifact="workhive-${version}-${{ matrix.target }}"
+          mkdir -p "dist/${artifact}"
+          cp "target/${{ matrix.target }}/release/workhive" "dist/${artifact}/workhive"
+          tar -C dist -czf "dist/${artifact}.tar.gz" "${artifact}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum "${artifact}.tar.gz" > "${artifact}.tar.gz.sha256")
+          else
+            (cd dist && shasum -a 256 "${artifact}.tar.gz" > "${artifact}.tar.gz.sha256")
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          generate_release_notes: true

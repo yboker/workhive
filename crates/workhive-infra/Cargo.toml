@@ -1,0 +1,29 @@
+[package]
+name = "workhive-infra"
+description = "Adapter implementations for workhive port traits"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+workhive-core = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+camino = { workspace = true }
+tracing = { workspace = true }
+which = { workspace = true }
+tempfile = { workspace = true }
+fslock = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["process"] }
+libc = "0.2"
+
+[dev-dependencies]
+workhive-testkit = { path = "../workhive-testkit" }

@@ -1,0 +1,44 @@
+[package]
+name = "workhive-cli"
+description = "CLI entry point for the workhive workspace manager"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "workhive"
+path = "src/main.rs"
+
+[dependencies]
+workhive-core = { workspace = true }
+workhive-infra = { workspace = true }
+clap = { workspace = true }
+clap_complete = { workspace = true }
+miette = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+logroller = { workspace = true }
+camino = { workspace = true }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+unicode-width = "0.2.0"
+ratatui = "0.29.0"
+crossterm = "0.29.0"
+terminal_size = "0.4.4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+# Self-update (rustls backend to avoid system OpenSSL dependency)
+self_update = { workspace = true, default-features = false, features = ["rustls", "archive-tar", "compression-flate2"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }
+workhive-testkit = { path = "../workhive-testkit" }

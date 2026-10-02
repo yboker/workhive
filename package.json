@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "lint:boundaries": "depcruise packages"
+  },
+  "devDependencies": {
+    "dependency-cruiser": "^18.2.0",
+    "typescript": "^5.9.3"
+  }
+}

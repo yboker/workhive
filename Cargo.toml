@@ -1,0 +1,71 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/workhive-cli",
+    "crates/workhive-core",
+    "crates/workhive-infra",
+    "crates/workhive-testkit",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "MIT"
+repository = "https://github.com/workhive/workhive"
+
+[workspace.dependencies]
+# Internal crates
+workhive-core = { path = "crates/workhive-core" }
+workhive-infra = { path = "crates/workhive-infra" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Configuration
+toml = "0.8"
+toml_edit = "0.22"
+
+# CLI
+clap = { version = "4", features = ["derive", "string"] }
+clap_complete = "4.6"
+
+# Error handling
+thiserror = "2"
+miette = { version = "7", features = ["fancy"] }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+logroller = "0.1"
+
+# Identity
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Cryptographic digest
+sha2 = "0.10"
+
+# Path handling
+camino = { version = "1", features = ["serde1"] }
+
+# File locking
+fslock = "0.2"
+
+# System utilities
+which = "8.0.2"
+
+# Self-update with rustls to avoid system OpenSSL dependency
+self_update = { version = "0.41", default-features = false, features = ["rustls", "archive-tar", "compression-flate2"] }
+
+# Testing
+assert_cmd = { version = "2" }
+predicates = { version = "3" }
+insta = { version = "1", features = ["json"] }
+tempfile = { version = "3" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

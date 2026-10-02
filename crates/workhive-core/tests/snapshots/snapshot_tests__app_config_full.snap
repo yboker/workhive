@@ -1,0 +1,23 @@
+---
+source: crates/workhive-core/tests/snapshot_tests.rs
+assertion_line: 32
+expression: config
+---
+{
+  "language": "zh-CN",
+  "tmux": {
+    "server_name": "custom-server",
+    "naming": null
+  },
+  "layout": null,
+  "snapshot": null,
+  "logging": null,
+  "projects": null,
+  "discovery": null,
+  "tools": null,
+  "worktree_root": "/custom/worktrees",
+  "snapshot_root": "/custom/snapshots",
+  "runtime_root": "/custom/runtime",
+  "features": null,
+  "pane": null
+}

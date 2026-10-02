@@ -1,0 +1,10 @@
+---
+source: crates/workhive-core/tests/snapshot_tests.rs
+assertion_line: 81
+expression: states
+---
+[
+  "idle",
+  "running",
+  "unknown"
+]
