@@ -49,6 +49,17 @@ workhive workspace close # tmux 当前工作区
 workhive workspace remove feature-auth
 ```
 
+电脑重启后，可以在任意目录使用全局命令返回原生 Herdr 会话：
+
+```bash
+workhive session resume
+workhive session resume workhive-managed
+```
+
+省略名称时，`session resume` 使用全局配置中的 `herdr.session`；未配置时使用
+`workhive-managed`。会话和运行时的恢复由 Herdr 负责，本命令不会创建项目状态。项目级工作区的
+创建、复用或显式重建仍使用 `workspace open`。
+
 交互式终端中，`workspace open` 可以引导初始化项目。非交互调用需要显式传入 `--init`。
 
 ## 命令
@@ -61,7 +72,7 @@ workhive workspace remove feature-auth
 | 项目 | `project list`、`project reindex`、`project roots ...` |
 | 工作区 | `workspace open`、`list`、`attach`、`close`、`remove`、`destroy` |
 | 工作树 | `workspace worktree list`、`remove` |
-| 会话 | `session list`、`attach` |
+| 会话 | `session list`、`attach`、`resume` |
 | 窗格 | `pane split`、`close`、`list`、`show`、`send` |
 | 运行时服务 | `runtime stop` |
 
@@ -100,6 +111,7 @@ project reindex [--root <path>] [--config-roots] [--clear-first] [--dry-run] [--
 project roots list|add|remove|edit|status
 session list [--view auto|table|compact|json]
 session attach [target]
+session resume [session]
 runtime stop [--force]
 ```
 
@@ -163,7 +175,7 @@ server；配置为 Workhive 保留的 named session 时，Workhive 可以通过 
 detached launcher 启动缺失的 server。自定义 session binding 会继续关联其持久化的
 endpoint。
 
-全局 Herdr session 默认值为 `workhive`，项目配置中的 `herdr.session` 可以覆盖它。
+全局 Herdr session 默认值为 `workhive-managed`，项目配置中的 `herdr.session` 可以覆盖它。
 已有 workspace binding 会保持权威，只有对选定工作区显式使用 `--force` 重建后才应用新的
 session 配置。
 

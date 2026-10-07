@@ -69,8 +69,9 @@ pub(crate) mod test_env {
     /// Run a closure with exclusive access to process-level environment variables.
     ///
     /// Each pair is `(name, Some(value))` to set or `(name, None)` to unset.
-    /// Previous values are restored afterward, even on panic. Tests that mutate
-    /// `PATH`, `HOME`, `HERDR_SOCKET_PATH`, `WORKHIVE_HERDR_BIN`, or `XDG_CONFIG_HOME` MUST use this helper.
+    /// Previous values are restored afterward, even on panic. Tests that read
+    /// or mutate `PATH`, `HOME`, `HERDR_SOCKET_PATH`, `WORKHIVE_HERDR_BIN`,
+    /// or `XDG_CONFIG_HOME` MUST use this helper.
     pub fn with_exclusive_env<F, R>(vars: &[(&str, Option<&str>)], f: F) -> R
     where
         F: FnOnce() -> R,
@@ -103,8 +104,8 @@ pub(crate) mod test_env {
     /// Run a closure with exclusive access to process-level environment variables.
     ///
     /// Sets `XDG_CONFIG_HOME` before the closure and restores the previous value
-    /// afterward, even on panic. All tests that modify env vars MUST use this
-    /// to avoid concurrent mutation of the shared process environment.
+    /// afterward, even on panic. All tests that read or modify environment
+    /// variables MUST use an exclusive helper to avoid concurrent races.
     pub fn with_xdg_config_home<F, R>(value: &str, f: F) -> R
     where
         F: FnOnce() -> R,

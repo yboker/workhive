@@ -66,6 +66,20 @@
 
 use std::process::{Command, Stdio};
 
+#[cfg(unix)]
+fn command_status_retrying_etxtbsy(
+    command: &mut Command,
+) -> std::io::Result<std::process::ExitStatus> {
+    crate::dependency::spawn_retrying_etxtbsy(command).and_then(|mut child| child.wait())
+}
+
+#[cfg(not(unix))]
+fn command_status_retrying_etxtbsy(
+    command: &mut Command,
+) -> std::io::Result<std::process::ExitStatus> {
+    command.status()
+}
+
 use tracing::{info, warn};
 use workhive_core::domain::activity::ProviderKind;
 use workhive_core::ports::{
@@ -257,7 +271,7 @@ impl NotificationPort for MacOsOsascriptNotificationPort {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
-        match cmd.status() {
+        match command_status_retrying_etxtbsy(&mut cmd) {
             Ok(status) if status.success() => Ok(()),
             Ok(status) => Err(NotificationDeliveryError {
                 reason: format!("osascript exited with non-zero status: {status:?}"),
@@ -563,7 +577,7 @@ impl NotificationPort for LinuxNotifySendNotificationPort {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
-        match cmd.status() {
+        match command_status_retrying_etxtbsy(&mut cmd) {
             Ok(status) if status.success() => Ok(()),
             Ok(status) => Err(NotificationDeliveryError {
                 reason: format!("notify-send exited with non-zero status: {status:?}"),

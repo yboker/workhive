@@ -817,7 +817,7 @@ mod runtime_binding_tests {
         let composition = CliComposition::new();
         let binding = RuntimeBinding::new(
             RuntimeBackendId::herdr(),
-            "/home/user/.config/herdr/sessions/workhive/herdr.sock",
+            "/home/user/.config/herdr/sessions/workhive-managed/herdr.sock",
             "ws-1",
         )
         .expect("binding identifiers");

@@ -1020,6 +1020,7 @@ pub const CLI_HELP_CMD_WORKSPACE_WORKTREE: &str = "cli.help.cmd.workspace.worktr
 pub const CLI_HELP_CMD_WORKSPACE_WORKTREE_LIST: &str = "cli.help.cmd.workspace.worktree.list";
 pub const CLI_HELP_CMD_WORKSPACE_WORKTREE_REMOVE: &str = "cli.help.cmd.workspace.worktree.remove";
 pub const CLI_HELP_CMD_SESSION_ATTACH: &str = "cli.help.cmd.session.attach";
+pub const CLI_HELP_CMD_SESSION_RESUME: &str = "cli.help.cmd.session.resume";
 pub const CLI_HELP_CMD_PROJECT_ROOTS: &str = "cli.help.cmd.project.roots";
 pub const CLI_HELP_CMD_PROJECT_ROOTS_LIST: &str = "cli.help.cmd.project.roots.list";
 pub const CLI_HELP_CMD_PROJECT_ROOTS_ADD: &str = "cli.help.cmd.project.roots.add";
@@ -1034,6 +1035,7 @@ pub const CLI_ARG_WORKTREE_DELETE_BRANCH: &str = "cli.arg.worktree.delete_branch
 pub const CLI_ARG_WORKTREE_KEEP_BRANCH: &str = "cli.arg.worktree.keep_branch";
 pub const CLI_ARG_SESSION_LIST_VIEW: &str = "cli.arg.session.list.view";
 pub const CLI_ARG_SESSION_ATTACH_TARGET: &str = "cli.arg.session.attach.target";
+pub const CLI_ARG_SESSION_RESUME_SESSION: &str = "cli.arg.session.resume.session";
 pub const CLI_ARG_PROJECT_ROOTS_PATH: &str = "cli.arg.project.roots.path";
 
 // -- Index warnings --

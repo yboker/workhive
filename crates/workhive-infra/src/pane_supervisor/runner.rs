@@ -160,6 +160,9 @@ pub fn run_supervisor(args: PaneSupervisorRun) -> PaneSupervisorOutcome {
             );
         }
     }
+    #[cfg(unix)]
+    let child_handle = crate::dependency::spawn_retrying_etxtbsy(&mut command);
+    #[cfg(not(unix))]
     let child_handle = command.spawn();
     let mut child = match child_handle {
         Ok(child) => child,

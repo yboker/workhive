@@ -71,8 +71,8 @@ fn cleanup_error_is_already_done(error: &workhive_core::ports::RuntimeError) -> 
     }
 }
 
-fn cleanup_runtime(
-    runtime: &dyn workhive_core::ports::WorkspaceRuntimePort,
+fn cleanup_runtime<T: workhive_core::ports::WorkspaceRuntimePort + ?Sized>(
+    runtime: &T,
     binding: &workhive_core::domain::RuntimeBinding,
 ) -> Result<(), workhive_core::ports::RuntimeError> {
     match runtime.destroy_workspace_binding(binding) {
@@ -82,12 +82,14 @@ fn cleanup_runtime(
     }
 }
 
-fn cleanup_replacement_resources(
-    runtime: &dyn workhive_core::ports::WorkspaceRuntimePort,
+fn cleanup_replacement_resources<T: workhive_core::ports::WorkspaceRuntimePort + ?Sized>(
+    runtime: Option<&T>,
     launch_identity: &dyn workhive_core::ports::PaneLaunchIdentityPort,
     binding: &workhive_core::domain::RuntimeBinding,
 ) -> Result<(), CliError> {
-    cleanup_runtime(runtime, binding)?;
+    if let Some(runtime) = runtime {
+        cleanup_runtime(runtime, binding)?;
+    }
     launch_identity
         .forget_workspace(&binding.scope_id, &binding.workspace_id)
         .map_err(|error| {
@@ -97,6 +99,25 @@ fn cleanup_replacement_resources(
             ))
         })?;
     Ok(())
+}
+
+fn runtime_for_cleanup(
+    ctx: &CommandContext,
+    binding: &workhive_core::domain::RuntimeBinding,
+) -> Result<Option<Box<dyn crate::composition::RuntimeAdapter>>, CliError> {
+    match ctx.composition.runtime_for_binding(binding) {
+        Ok(runtime) => Ok(Some(runtime)),
+        Err(CliError::RuntimeOp(error)) if cleanup_error_is_already_done(&error) => {
+            tracing::debug!(
+                server = %binding.scope_id,
+                session = %binding.workspace_id,
+                error = %error,
+                "previous runtime is absent; skipping runtime cleanup"
+            );
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn handle_herdr_force_close_refusal(
@@ -252,8 +273,11 @@ impl Drop for ForceRebuildGuard<'_> {
             return;
         }
         if self.target_owned
-            && let Err(error) =
-                cleanup_replacement_resources(self.runtime, self.launch_identity, &self.target)
+            && let Err(error) = cleanup_replacement_resources(
+                Some(self.runtime),
+                self.launch_identity,
+                &self.target,
+            )
         {
             tracing::error!(
                 server = %self.target.scope_id,
@@ -577,9 +601,9 @@ pub(crate) fn cmd_open(
             workhive_core::domain::RuntimeReplacement::Preparing { target } => {
                 let launch_identity_store =
                     ctx.composition.pane_launch_identity_store(root.as_ref());
-                let cleanup_runtime = ctx.composition.runtime_for_binding(&target)?;
+                let cleanup_runtime = runtime_for_cleanup(ctx, &target)?;
                 if let Err(error) = cleanup_replacement_resources(
-                    cleanup_runtime.as_ref(),
+                    cleanup_runtime.as_deref(),
                     &launch_identity_store,
                     &target,
                 ) {
@@ -606,9 +630,9 @@ pub(crate) fn cmd_open(
             } => {
                 let launch_identity_store =
                     ctx.composition.pane_launch_identity_store(root.as_ref());
-                let previous_runtime = ctx.composition.runtime_for_binding(&previous)?;
+                let previous_runtime = runtime_for_cleanup(ctx, &previous)?;
                 if let Err(error) = cleanup_replacement_resources(
-                    previous_runtime.as_ref(),
+                    previous_runtime.as_deref(),
                     &launch_identity_store,
                     &previous,
                 ) {
@@ -662,9 +686,9 @@ pub(crate) fn cmd_open(
             workhive_core::domain::RuntimeReplacement::RegisteringCheckout { previous } => {
                 let launch_identity_store =
                     ctx.composition.pane_launch_identity_store(root.as_ref());
-                let previous_runtime = ctx.composition.runtime_for_binding(&previous)?;
+                let previous_runtime = runtime_for_cleanup(ctx, &previous)?;
                 if let Err(error) = cleanup_replacement_resources(
-                    previous_runtime.as_ref(),
+                    previous_runtime.as_deref(),
                     &launch_identity_store,
                     &previous,
                 ) {
@@ -695,9 +719,9 @@ pub(crate) fn cmd_open(
             workhive_core::domain::RuntimeReplacement::Cleaning { previous } => {
                 let launch_identity_store =
                     ctx.composition.pane_launch_identity_store(root.as_ref());
-                let cleanup_runtime = ctx.composition.runtime_for_binding(&previous)?;
+                let cleanup_runtime = runtime_for_cleanup(ctx, &previous)?;
                 if let Err(error) = cleanup_replacement_resources(
-                    cleanup_runtime.as_ref(),
+                    cleanup_runtime.as_deref(),
                     &launch_identity_store,
                     &previous,
                 ) {
@@ -720,11 +744,18 @@ pub(crate) fn cmd_open(
         }
     }
 
-    let active_runtime = if !had_persisted_identity {
-        runtime_for_new_workspace()?
+    let active_runtime = if had_persisted_identity && force {
+        // Force rebuild targets the current effective backend/session. The
+        // previous binding is only needed as data for replacement cleanup;
+        // connecting to it here would make a stopped old Herdr session fatal.
+        None
+    } else if !had_persisted_identity {
+        Some(runtime_for_new_workspace()?)
     } else {
-        ctx.composition
-            .runtime_for_binding(&workspace_identity.runtime_binding())?
+        Some(
+            ctx.composition
+                .runtime_for_binding(&workspace_identity.runtime_binding())?,
+        )
     };
 
     if force && replacement_cleanup_pending {
@@ -735,8 +766,12 @@ pub(crate) fn cmd_open(
     }
 
     let active = workspace_identity.runtime_binding();
-    let bound_exists = if had_persisted_identity {
-        match active_runtime.has_workspace_binding(&active) {
+    let bound_exists = if had_persisted_identity && !force {
+        match active_runtime
+            .as_ref()
+            .expect("non-force open must have an active runtime")
+            .has_workspace_binding(&active)
+        {
             Ok(exists) => exists,
             Err(
                 ref error @ workhive_core::ports::RuntimeError::BackendUnavailable {
@@ -764,7 +799,10 @@ pub(crate) fn cmd_open(
         None
     } else {
         usecases::open::resolve_open_session(
-            active_runtime.as_ref(),
+            active_runtime
+                .as_ref()
+                .map(|runtime| runtime.as_ref() as &dyn workhive_core::ports::WorkspaceRuntimePort)
+                .expect("new workspace open must have an active runtime"),
             &server,
             &session,
             &name,
@@ -820,7 +858,7 @@ pub(crate) fn cmd_open(
     let runtime = if force {
         runtime_for_new_workspace()?
     } else {
-        active_runtime
+        active_runtime.expect("non-force open must have an active runtime")
     };
     let mut plan = usecases::open::prepare_open_plan_with_scope(
         runtime.as_ref(),
@@ -1173,9 +1211,9 @@ pub(crate) fn cmd_open(
             guard.disarm();
         }
         if let Some(previous) = previous_force_runtime.as_ref().and_then(Option::as_ref) {
-            let previous_runtime = ctx.composition.runtime_for_binding(previous)?;
+            let previous_runtime = runtime_for_cleanup(ctx, previous)?;
             if let Err(error) = cleanup_replacement_resources(
-                previous_runtime.as_ref(),
+                previous_runtime.as_deref(),
                 &launch_identity_store,
                 previous,
             ) {
@@ -1187,6 +1225,9 @@ pub(crate) fn cmd_open(
                         )
                     )
                 {
+                    let previous_runtime = previous_runtime
+                        .as_deref()
+                        .expect("runtime cleanup errors require an available runtime");
                     let staged = workspace_identity.runtime_binding();
                     usecases::identity::rollback_runtime_replacement(
                         &identity_adapter,
@@ -1201,7 +1242,7 @@ pub(crate) fn cmd_open(
                     };
                     if target_owned {
                         cleanup_replacement_resources(
-                            runtime.as_ref(),
+                            Some(runtime.as_ref()),
                             &launch_identity_store,
                             &staged,
                         )?;
@@ -1213,7 +1254,7 @@ pub(crate) fn cmd_open(
                     return handle_herdr_force_close_refusal(
                         ctx,
                         locale,
-                        previous_runtime.as_ref(),
+                        previous_runtime,
                         previous,
                         &workspace_name,
                         no_attach,

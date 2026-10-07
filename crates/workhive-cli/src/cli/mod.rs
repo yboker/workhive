@@ -33,7 +33,7 @@ System Commands:
 Resource Commands:
   project      Manage registered workhive projects
   workspace    Manage workspaces in the current project
-  session      Manage active workspace sessions
+  session      Manage runtime sessions
   runtime      Manage backend runtime services
   pane         Manage panes in the current workspace
 
@@ -434,13 +434,15 @@ pub enum WorkspaceAction {
     },
 }
 
-/// Session subcommands.
+/// Manage runtime sessions.
 ///
 /// `session attach` is global: it does not require a project context,
 /// does not create `.workhive/`, does not materialize worktrees, and does
 /// not write the project index. It only attaches to an already-existing
 /// runtime/tmux session that Workhive can resolve from the global session
-/// listing. Project-scoped attach lives under `workspace attach`.
+/// listing. Project-scoped attach lives under `workspace attach`. `session
+/// resume` enters a native Herdr session from any directory and leaves session
+/// restoration to Herdr.
 #[derive(Subcommand, Debug)]
 pub enum SessionAction {
     /// List active workspace sessions across all registered projects.
@@ -461,6 +463,15 @@ pub enum SessionAction {
     Attach {
         /// Optional target: <session> | <project/workspace> | <workspace>.
         target: Option<String>,
+    },
+
+    /// Resume a native Herdr session from any directory.
+    ///
+    /// If no session is supplied, the global `herdr.session` setting is used;
+    /// when it is absent, the built-in `workhive-managed` session is selected.
+    Resume {
+        /// Optional Herdr session name.
+        session: Option<String>,
     },
 }
 

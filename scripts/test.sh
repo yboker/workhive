@@ -2,8 +2,8 @@
 #
 # Project-local test runner and verification-tier entry point.
 #
-# This runner is purely additive: every mode orchestrates the existing
-# `cargo` commands, run serially with fail-fast semantics. Direct
+# This runner is purely additive: every mode orchestrates existing project
+# commands, run serially with fail-fast semantics. Direct
 # `cargo fmt`, `cargo clippy`, and `cargo test` commands remain valid and
 # behave exactly as before. The runner does not implement any product
 # assertions; it only selects and orders existing test suites.
@@ -15,7 +15,8 @@
 #   batch <name>       A named, durable union of focused areas plus a cheap
 #                      deterministic check. Batch names describe a workflow
 #                      domain (e.g. `cli-surface`), not a transient task.
-#   full               Final quality gates (fmt, clippy, Rust and Node tests).
+#   full               Final quality gates (fmt, all-target clippy, all Rust
+#                      targets and doctests, and dependency-boundary checks).
 #   e2e                Real-dependency / ignored tests (tmux and Herdr). Opt-in
 #                      only; never part of focused, batch, or full.
 #
@@ -78,8 +79,8 @@ Modes:
   focused <area>...  Run the focused tests for one or more areas (below).
   batch <name>       Run a named batch: a durable union of focused areas
                      plus a cheap deterministic format check.
-  full               Run the final quality gates: fmt check, clippy, the
-                     full workspace test suite, and Node extension tests.
+  full               Run the final quality gates: fmt check, all-target
+                     clippy, all Rust targets and doctests, and boundary lint.
   e2e                Run real-dependency / ignored tests (tmux and Herdr).
                      Opt-in only; excluded from focused, batch, and full.
 
@@ -392,27 +393,39 @@ run_batch() {
 
 run_full() {
     run_step cargo fmt --all -- --check
-    run_step_with_timeout "${FULL_TIMEOUT_SECS}" cargo clippy --workspace -- -D warnings
-    run_step_with_timeout "${FULL_TIMEOUT_SECS}" cargo test --workspace
+    run_step_with_timeout "${FULL_TIMEOUT_SECS}" cargo clippy --workspace --all-targets -- -D warnings
+    run_step_with_timeout "${FULL_TIMEOUT_SECS}" cargo test --workspace --all-targets
+    run_step_with_timeout "${FULL_TIMEOUT_SECS}" cargo test --workspace --doc
+    run_step npm run lint:boundaries
 }
 
 run_e2e() {
-    # Real-dependency tier: real tmux is required; real Herdr is exercised
-    # when its canonical status command confirms a protocol-ready server.
-    #
-    # `workhive` is the configured default session; project overrides are
-    # possible, but the real Herdr smoke tier uses this live default. This
-    # script cannot import the Rust constant, so the literal is duplicated
-    # here deliberately.
-    run_cargo_test_with_timeout "${E2E_TIMEOUT_SECS}" -p workhive-cli --test cli_integration -- --ignored
+    # Real-dependency tier: real tmux is required; Herdr is optional for the
+    # tmux subset and is exercised when its binary is installed.
+    if ! command -v tmux >/dev/null 2>&1; then
+        echo "FAIL: real E2E requires tmux on PATH." >&2
+        return 2
+    fi
+
+    local cli_test_args=(--ignored)
+    if ! command -v herdr >/dev/null 2>&1; then
+        # Keep real-tmux E2E useful on hosts without Herdr; the one CLI test
+        # that needs the Herdr binary is skipped explicitly.
+        cli_test_args+=(--skip real_herdr_force_rebuild_refusal_preserves_project_and_linked_workspaces)
+    fi
+    run_cargo_test_with_timeout "${E2E_TIMEOUT_SECS}" -p workhive-cli --test cli_integration -- "${cli_test_args[@]}"
+
+    # `workhive-managed` is the built-in Workhive-owned Herdr session;
+    # project overrides are possible, but the real Herdr smoke tier uses
+    # this reserved session.
     local herdr_status=""
     if command -v herdr >/dev/null 2>&1; then
-        herdr_status="$(herdr --session workhive status server 2>/dev/null || true)"
+        herdr_status="$(herdr --session workhive-managed status server 2>/dev/null || true)"
     fi
     if [[ "${herdr_status}" == *"status: running"* ]]; then
         run_cargo_test_with_timeout "${E2E_TIMEOUT_SECS}" -p workhive-infra real_herdr_ -- --ignored
     else
-        echo "SKIP: real Herdr E2E requires 'herdr --session workhive status server' to report status: running."
+        echo "SKIP: real Herdr E2E requires 'herdr --session workhive-managed status server' to report status: running."
     fi
 }
 

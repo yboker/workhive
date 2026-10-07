@@ -286,6 +286,7 @@ fn dispatch(
         Commands::Session { action } => match action {
             SessionAction::List { view } => cmd_sessions(view, ctx),
             SessionAction::Attach { target } => cmd_session_attach(target.as_deref(), ctx),
+            SessionAction::Resume { session } => cmd_session_resume(session.as_deref(), ctx),
         },
         Commands::Runtime { action } => match action {
             RuntimeAction::Stop { force } => {
@@ -708,6 +709,21 @@ fn build_policy(command: &Commands) -> CommandPolicy {
             project_init_behavior: ProjectInitBehavior::Forbidden,
             confirmation_stage: ConfirmationStage::None,
             needs_global_config: true,
+            check_deps: false,
+            confirm: ConfirmPolicy::None,
+            force: true,
+        },
+        Commands::Session {
+            action: SessionAction::Resume { .. },
+        } => CommandPolicy {
+            // Resuming a native Herdr session is deliberately independent of
+            // the current project. Herdr owns startup and restoration; this
+            // command only resolves the global session name and delegates to
+            // Herdr's native client entry point.
+            command_kind: CommandKind::ReadOnly,
+            project_init_behavior: ProjectInitBehavior::Forbidden,
+            confirmation_stage: ConfirmationStage::None,
+            needs_global_config: false,
             check_deps: false,
             confirm: ConfirmPolicy::None,
             force: true,

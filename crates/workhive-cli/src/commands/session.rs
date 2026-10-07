@@ -4,6 +4,8 @@
 //! have no Workhive binding) and keeps tmux's existing flat presentation.
 //! `session attach` resolves a persisted runtime binding across all projects
 //! or hands an explicit Herdr session to Herdr's native attach command.
+//! `session resume` enters a native Herdr session from any directory and
+//! leaves session startup and restoration to Herdr.
 //!
 //! These commands intentionally live in their own module (separate from the
 //! large `commands/project.rs`) so the global session surface can evolve
@@ -882,6 +884,28 @@ fn emit_sessions_json(records: &[SessionRecord]) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+pub(crate) fn cmd_session_resume(
+    session: Option<&str>,
+    ctx: &CommandContext,
+) -> Result<(), CliError> {
+    #[cfg(unix)]
+    {
+        let session = match session {
+            Some(session) => session.to_owned(),
+            None => ctx.herdr_session_for(None)?,
+        };
+        workhive_infra::herdr::resume_session(&session).map_err(CliError::RuntimeOp)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = (session, ctx);
+        Err(CliError::Runtime(
+            "Herdr runtime backend requires Unix sockets".to_owned(),
+        ))
+    }
+}
+
 // `workhive session attach`
 // ─────────────────────────────────────────────────────────────────────────────
 

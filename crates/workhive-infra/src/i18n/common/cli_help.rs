@@ -14,7 +14,7 @@ pub(super) fn register_en(m: &mut HashMap<&'static str, &'static str>) {
     // so clap renders the default token unchanged.
     m.insert(
         "cli.help.template",
-        "{about-with-newline}\n{usage-heading} {usage}\n\nSystem Commands:\n  {bin} init              Bootstrap global / project configuration\n  {bin} config            Inspect and edit configuration\n  {bin} doctor            Check environment and diagnose issues\n  {bin} completion        Install shell completions or print completion scripts\n\nResource Commands:\n  {bin} project           Manage tracked projects\n  {bin} workspace         Manage workspaces (open / list / attach / close)\n  {bin} session           Inspect runtime sessions belonging to workspaces\n  {bin} runtime           Manage backend runtime services\n  {bin} pane              Inspect, split, and message panes inside a session\n\nOptions:\n{options}",
+        "{about-with-newline}\n{usage-heading} {usage}\n\nSystem Commands:\n  {bin} init              Bootstrap global / project configuration\n  {bin} config            Inspect and edit configuration\n  {bin} doctor            Check environment and diagnose issues\n  {bin} completion        Install shell completions or print completion scripts\n\nResource Commands:\n  {bin} project           Manage tracked projects\n  {bin} workspace         Manage workspaces (open / list / attach / close)\n  {bin} session           Manage and enter runtime sessions\n  {bin} runtime           Manage backend runtime services\n  {bin} pane              Inspect, split, and message panes inside a session\n\nOptions:\n{options}",
     );
     m.insert(
         "cli.help.nested_template",
@@ -72,10 +72,7 @@ pub(super) fn register_en(m: &mut HashMap<&'static str, &'static str>) {
         "cli.help.cmd.workspace",
         "Manage workspaces (open, list, attach, close, remove)",
     );
-    m.insert(
-        "cli.help.cmd.session",
-        "Inspect runtime sessions belonging to workspaces",
-    );
+    m.insert("cli.help.cmd.session", "Inspect and enter runtime sessions");
     m.insert("cli.help.cmd.runtime", "Manage backend runtime services");
     m.insert(
         "cli.help.cmd.runtime.stop",
@@ -125,6 +122,10 @@ pub(super) fn register_en(m: &mut HashMap<&'static str, &'static str>) {
     m.insert(
         "cli.help.cmd.session.attach",
         "Attach to a workhive-managed session globally (no project context required)",
+    );
+    m.insert(
+        "cli.help.cmd.session.resume",
+        "Resume a native Herdr session from any directory",
     );
 
     m.insert(
@@ -357,6 +358,10 @@ pub(super) fn register_en(m: &mut HashMap<&'static str, &'static str>) {
         "Session: <session>, <project/workspace>, or <workspace>",
     );
     m.insert(
+        "cli.arg.session.resume.session",
+        "Herdr session name (uses the global default when omitted)",
+    );
+    m.insert(
         "cli.arg.project.roots.path",
         "Filesystem path to a project discovery root",
     );
@@ -384,7 +389,7 @@ pub(super) fn register_zh_cn(m: &mut HashMap<&'static str, &'static str>) {
     // clap, we emit a fully-rendered template here.
     m.insert(
         "cli.help.template",
-        "{about-with-newline}\n用法: {usage}\n\n系统命令:\n  {bin} init              引导全局或项目配置\n  {bin} config            查看与编辑配置\n  {bin} doctor            检查环境与诊断问题\n  {bin} completion        安装 shell 自动补全，或输出补全脚本\n\n资源命令:\n  {bin} project           管理已记录的项目\n  {bin} workspace         管理工作区（open / list / attach / close）\n  {bin} session           查看工作区下的运行时会话\n  {bin} runtime           管理后端运行时服务\n  {bin} pane              查看、切分并向窗格发送命令\n\n选项:\n{options}",
+        "{about-with-newline}\n用法: {usage}\n\n系统命令:\n  {bin} init              引导全局或项目配置\n  {bin} config            查看与编辑配置\n  {bin} doctor            检查环境与诊断问题\n  {bin} completion        安装 shell 自动补全，或输出补全脚本\n\n资源命令:\n  {bin} project           管理已记录的项目\n  {bin} workspace         管理工作区（open / list / attach / close）\n  {bin} session           查看并进入运行时会话\n  {bin} runtime           管理后端运行时服务\n  {bin} pane              查看、切分并向窗格发送命令\n\n选项:\n{options}",
     );
     m.insert(
         "cli.help.nested_template",
@@ -436,7 +441,7 @@ pub(super) fn register_zh_cn(m: &mut HashMap<&'static str, &'static str>) {
         "cli.help.cmd.workspace",
         "管理工作区（open / list / attach / close / remove）",
     );
-    m.insert("cli.help.cmd.session", "查看工作区下的运行时会话");
+    m.insert("cli.help.cmd.session", "查看并进入运行时会话");
     m.insert("cli.help.cmd.runtime", "管理后端运行时服务");
     m.insert(
         "cli.help.cmd.runtime.stop",
@@ -474,6 +479,10 @@ pub(super) fn register_zh_cn(m: &mut HashMap<&'static str, &'static str>) {
     m.insert(
         "cli.help.cmd.session.attach",
         "全局连接到一个 workhive 管理的会话（无需项目上下文）",
+    );
+    m.insert(
+        "cli.help.cmd.session.resume",
+        "从任意目录恢复并进入原生 Herdr 会话",
     );
 
     m.insert(
@@ -655,6 +664,10 @@ pub(super) fn register_zh_cn(m: &mut HashMap<&'static str, &'static str>) {
     m.insert(
         "cli.arg.session.attach.target",
         "会话：完整会话名、project/workspace 或 workspace 名",
+    );
+    m.insert(
+        "cli.arg.session.resume.session",
+        "Herdr 会话名称（省略时使用全局默认值）",
     );
     m.insert("cli.arg.project.roots.path", "项目发现根目录的文件系统路径");
     m.insert("cli.arg.config.global", "操作全局配置");

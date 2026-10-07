@@ -366,6 +366,7 @@ mod tests {
             i18n_keys::WORKTREE_REMOVE_BRANCH_DELETE_FAILED,
             // CLI help: command groups
             i18n_keys::CLI_HELP_CMD_SESSION_ATTACH,
+            i18n_keys::CLI_HELP_CMD_SESSION_RESUME,
             i18n_keys::CLI_HELP_CMD_RUNTIME,
             i18n_keys::CLI_HELP_CMD_RUNTIME_STOP,
             i18n_keys::CLI_ARG_RUNTIME_FORCE,
@@ -381,6 +382,7 @@ mod tests {
             i18n_keys::CLI_ARG_WORKTREE_DELETE_BRANCH,
             i18n_keys::CLI_ARG_SESSION_LIST_VIEW,
             i18n_keys::CLI_ARG_SESSION_ATTACH_TARGET,
+            i18n_keys::CLI_ARG_SESSION_RESUME_SESSION,
             i18n_keys::CLI_ARG_PROJECT_ROOTS_PATH,
             // Attach global selector
             i18n_keys::ATTACH_GLOBAL_SELECT,
@@ -530,6 +532,7 @@ mod tests {
             i18n_keys::WORKTREE_REMOVE_BRANCH_DELETE_FAILED,
             // CLI help: command groups
             i18n_keys::CLI_HELP_CMD_SESSION_ATTACH,
+            i18n_keys::CLI_HELP_CMD_SESSION_RESUME,
             i18n_keys::CLI_HELP_CMD_RUNTIME,
             i18n_keys::CLI_HELP_CMD_RUNTIME_STOP,
             i18n_keys::CLI_ARG_RUNTIME_FORCE,
@@ -545,6 +548,7 @@ mod tests {
             i18n_keys::CLI_ARG_WORKTREE_DELETE_BRANCH,
             i18n_keys::CLI_ARG_SESSION_LIST_VIEW,
             i18n_keys::CLI_ARG_SESSION_ATTACH_TARGET,
+            i18n_keys::CLI_ARG_SESSION_RESUME_SESSION,
             i18n_keys::CLI_ARG_PROJECT_ROOTS_PATH,
         ];
         for key in keys {

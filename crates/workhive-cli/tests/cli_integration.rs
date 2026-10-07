@@ -637,6 +637,97 @@ fn session_help_lists_list_and_attach() {
         commands.iter().any(|c| c == "attach"),
         "session help must list `attach`; got {commands:?}"
     );
+    assert!(
+        commands.iter().any(|c| c == "resume"),
+        "session help must list `resume`; got {commands:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn session_resume_resolves_session_from_any_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tempfile::TempDir::new().unwrap();
+    let unrelated = tempfile::TempDir::new().unwrap();
+    let bin = tempfile::TempDir::new().unwrap();
+    let args_file = unrelated.path().join("herdr-args");
+    let injection_marker = home.path().join("session-resume-injected");
+    let herdr = bin.path().join("herdr");
+    std::fs::write(
+        &herdr,
+        "#!/bin/sh\nif [ -n \"${HERDR_SOCKET_PATH:-}\" ]; then exit 24; fi\nprintf '%s\\n' \"$@\" > \"$WORKHIVE_TEST_ARGS\"\nexit 23\n",
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&herdr).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&herdr, permissions).unwrap();
+
+    let run_resume = |args: &[&str], socket: Option<&str>| {
+        let mut command = workhive_with_home(home.path());
+        command
+            .env("PATH", bin.path())
+            .env("WORKHIVE_TEST_ARGS", &args_file)
+            .current_dir(unrelated.path());
+        if let Some(socket) = socket {
+            command.env("HERDR_SOCKET_PATH", socket);
+        }
+        command.args(args).assert().code(23);
+    };
+
+    run_resume(&["session", "resume"], None);
+    assert_eq!(
+        std::fs::read_to_string(&args_file).unwrap(),
+        "--session\nworkhive-managed\n"
+    );
+    assert!(
+        !unrelated.path().join(".workhive").exists(),
+        "global resume must not initialize the current directory"
+    );
+
+    let config_dir = home.path().join(".config/workhive");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        config_dir.join("config.toml"),
+        "[herdr]\nsession = \"global-session\"\n",
+    )
+    .unwrap();
+    let project_config_dir = unrelated.path().join(".workhive");
+    std::fs::create_dir_all(&project_config_dir).unwrap();
+    std::fs::write(
+        project_config_dir.join("config.toml"),
+        "[herdr]\nsession = \"project-session\"\n",
+    )
+    .unwrap();
+
+    let adversarial_session = format!("explicit-session;touch {}", injection_marker.display());
+    run_resume(
+        &["session", "resume", &adversarial_session],
+        Some("/unowned/socket"),
+    );
+    assert_eq!(
+        std::fs::read_to_string(&args_file).unwrap(),
+        format!("--session\n{adversarial_session}\n")
+    );
+    assert!(
+        !injection_marker.exists(),
+        "session names must not be shell-evaluated"
+    );
+
+    run_resume(
+        &["session", "resume", "explicit-session"],
+        Some("/unowned/socket"),
+    );
+    assert_eq!(
+        std::fs::read_to_string(&args_file).unwrap(),
+        "--session\nexplicit-session\n"
+    );
+
+    run_resume(&["session", "resume"], None);
+    assert_eq!(
+        std::fs::read_to_string(&args_file).unwrap(),
+        "--session\nglobal-session\n"
+    );
 }
 
 #[test]
@@ -1814,6 +1905,20 @@ fn config_set_shows_diff_preview() {
 }
 
 #[test]
+fn config_explain_herdr_session_names_reserved_default() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    workhive_with_home(tmp.path())
+        .args(["init", "--global", "--backend", "tmux", "--force"])
+        .assert()
+        .success();
+    workhive_with_home(tmp.path())
+        .args(["config", "explain", "herdr.session"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("workhive-managed"));
+}
+
+#[test]
 fn config_explain_logging_retention_shows_examples() {
     let tmp = tempfile::TempDir::new().unwrap();
     workhive_with_home(tmp.path())
@@ -2943,6 +3048,42 @@ fn real_herdr_force_rebuild_refusal_preserves_project_and_linked_workspaces() {
                 workspace["id"] == migrated_identity["runtime_binding"]["workspace_id"]
                     && workspace["owner"]["workspace"] == "main"
             })
+    );
+
+    // A stopped previous Herdr session must not block force rebuild. The
+    // replacement target is the newly configured session, while the stopped
+    // binding is already absent and needs no runtime cleanup.
+    let stopped = std::process::Command::new(&real_herdr)
+        .env("HOME", &real_home)
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("HERDR_SOCKET_PATH")
+        .env_remove("HERDR_CONFIG_PATH")
+        .args(["session", "stop", &migration_session])
+        .output()
+        .expect("stop previous Herdr session");
+    assert!(
+        stopped.status.success(),
+        "stop previous Herdr session failed: {}",
+        String::from_utf8_lossy(&stopped.stderr)
+    );
+    command()
+        .args(["config", "set", "herdr.session", &herdr_session, "--force"])
+        .current_dir(&project_dir)
+        .assert()
+        .success();
+    command()
+        .args(["workspace", "open", "main", "--force", "--no-attach"])
+        .current_dir(&project_dir)
+        .assert()
+        .success();
+    let recovered_identity = read_workspace_identity(&project_dir, "main");
+    assert_ne!(
+        recovered_identity["runtime_binding"]["scope_id"],
+        migrated_identity["runtime_binding"]["scope_id"]
+    );
+    assert_ne!(
+        recovered_identity["runtime_binding"]["workspace_id"],
+        migrated_identity["runtime_binding"]["workspace_id"]
     );
 
     command()
@@ -4941,6 +5082,7 @@ fn zh_cn_full_help_walk_has_no_english_clap_chrome() {
         &["session", "--help"],
         &["session", "list", "--help"],
         &["session", "attach", "--help"],
+        &["session", "resume", "--help"],
         &["pane", "--help"],
         &["pane", "split", "--help"],
         &["pane", "close", "--help"],

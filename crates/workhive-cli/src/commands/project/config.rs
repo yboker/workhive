@@ -507,7 +507,7 @@ pub(crate) fn cmd_config(
                 "herdr.session" => {
                     "herdr.session selects the native Herdr session for newly opened workspaces.\n\
                      Project configuration overrides the global setting; otherwise the built-in\n\
-                     default is 'workhive'. Existing workspace bindings are not migrated when this changes.\n\
+                     default is 'workhive-managed'. Existing workspace bindings are not migrated when this changes.\n\
                      The value must be a non-empty session name without path separators or control characters."
                 }
                 "backend" => {

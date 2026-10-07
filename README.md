@@ -52,6 +52,19 @@ workhive workspace close  # tmux current workspace
 workhive workspace remove feature-auth
 ```
 
+To return to a native Herdr session after a restart, run the global resume command
+from any directory:
+
+```bash
+workhive session resume
+workhive session resume workhive-managed
+```
+
+Without a name, `session resume` uses the global `herdr.session` setting and falls
+back to `workhive-managed`. It delegates session and runtime restoration to Herdr and does
+not create project state. Use `workspace open` for project-scoped workspace creation
+or explicit rebuilding.
+
 `workspace open` can guide project initialization in an interactive terminal.
 For a non-interactive call, use `--init` explicitly.
 
@@ -66,7 +79,7 @@ The resource commands are:
 | Projects | `project list`, `project reindex`, `project roots ...` |
 | Workspaces | `workspace open`, `list`, `attach`, `close`, `remove`, `destroy` |
 | Worktrees | `workspace worktree list`, `remove` |
-| Sessions | `session list`, `attach` |
+| Sessions | `session list`, `attach`, `resume` |
 | Panes | `pane split`, `close`, `list`, `show`, `send` |
 | Runtime service | `runtime stop` |
 
@@ -106,6 +119,7 @@ project reindex [--root <path>] [--config-roots] [--clear-first] [--dry-run] [--
 project roots list|add|remove|edit|status
 session list [--view auto|table|compact|json]
 session attach [target]
+session resume [session]
 runtime stop [--force]
 ```
 
@@ -167,7 +181,7 @@ With `backend = "herdr"`, Workhive:
 - shows Herdr's native session hierarchy through `session list` and delegates
   whole-session attach to Herdr.
 
-The global default Herdr session is `workhive`; project `herdr.session` overrides
+The global default Herdr session is `workhive-managed`; project `herdr.session` overrides
 it. Existing persisted workspace bindings remain authoritative until the selected
 workspace is explicitly rebuilt with `--force`.
 

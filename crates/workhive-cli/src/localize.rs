@@ -394,6 +394,10 @@ fn rewrite_session(cmd: Command, i18n: &dyn I18nPort) -> Command {
             let c = set_about_zh(c, i18n, keys::CLI_HELP_CMD_SESSION_ATTACH);
             set_arg_help(c, "target", i18n, keys::CLI_ARG_WORKSPACE_NAME_OPT)
         })
+        .mut_subcommand("resume", |c| {
+            let c = set_about_zh(c, i18n, keys::CLI_HELP_CMD_SESSION_RESUME);
+            set_arg_help(c, "session", i18n, keys::CLI_ARG_SESSION_RESUME_SESSION)
+        })
 }
 
 fn rewrite_runtime(cmd: Command, i18n: &dyn I18nPort) -> Command {

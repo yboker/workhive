@@ -293,16 +293,16 @@ fn spawn_detached_herdr_server(command: &mut Command) -> std::io::Result<std::pr
 /// process still holds a write reference to it. There are two real ways to hit
 /// that window:
 ///
-/// * `herdr update` replaces the installed binary. A spawn racing that write
-///   would otherwise surface to the user as "failed to start Herdr server".
-/// * `fork()` copies the whole descriptor table, so a child keeps the parent's
-///   write reference alive for any file another thread was writing at that
-///   instant. A test that execs a script it just wrote can therefore lose a
-///   race it did not create — hence the retry here instead of per test.
+/// * replacing an installed executable while a command launch races the write;
+/// * `fork()` copying a descriptor table while another thread writes a test
+///   executable.
 ///
-/// The window is short and bounded, so a few spaced retries settle it.
+/// The window is short and bounded, so shared process launchers use a few
+/// spaced retries instead of making each caller or test handle the race.
 #[cfg(unix)]
-fn spawn_retrying_etxtbsy(command: &mut Command) -> std::io::Result<std::process::Child> {
+pub(crate) fn spawn_retrying_etxtbsy(
+    command: &mut Command,
+) -> std::io::Result<std::process::Child> {
     const ATTEMPTS: u64 = 10;
     for attempt in 1..=ATTEMPTS {
         match command.spawn() {
@@ -1191,11 +1191,11 @@ mod tests {
 
     #[test]
     fn parses_socket_from_herdr_json_status_output() {
-        let output = r#"{"status":"not_running","socket":"/home/user/.config/herdr/sessions/workhive/herdr.sock","session":"workhive"}"#;
+        let output = r#"{"status":"not_running","socket":"/home/user/.config/herdr/sessions/workhive-managed/herdr.sock","session":"workhive-managed"}"#;
         assert_eq!(
             parse_socket_path(output),
             Some(std::path::PathBuf::from(
-                "/home/user/.config/herdr/sessions/workhive/herdr.sock"
+                "/home/user/.config/herdr/sessions/workhive-managed/herdr.sock"
             ))
         );
     }
@@ -1387,11 +1387,11 @@ mod tests {
 
     #[test]
     fn parses_socket_from_herdr_status_output() {
-        let output = "status: running\nversion: 0.9.0\nsocket: /home/user/.config/herdr/sessions/workhive/herdr.sock\n";
+        let output = "status: running\nversion: 0.9.0\nsocket: /home/user/.config/herdr/sessions/workhive-managed/herdr.sock\n";
         assert_eq!(
             parse_socket_path(output),
             Some(std::path::PathBuf::from(
-                "/home/user/.config/herdr/sessions/workhive/herdr.sock"
+                "/home/user/.config/herdr/sessions/workhive-managed/herdr.sock"
             ))
         );
     }
@@ -1399,9 +1399,9 @@ mod tests {
     #[test]
     fn parses_socket_with_indentation() {
         assert_eq!(
-            parse_socket_path("  socket: /tmp/herdr/sessions/workhive/herdr.sock\n"),
+            parse_socket_path("  socket: /tmp/herdr/sessions/workhive-managed/herdr.sock\n"),
             Some(std::path::PathBuf::from(
-                "/tmp/herdr/sessions/workhive/herdr.sock",
+                "/tmp/herdr/sessions/workhive-managed/herdr.sock",
             )),
         );
     }
@@ -1605,16 +1605,6 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn live_workhive_socket() -> Option<std::path::PathBuf> {
-        let output = Command::new("herdr")
-            .env_remove("HERDR_SOCKET_PATH")
-            .args(["--session", "workhive", "status", "server", "--json"])
-            .output()
-            .ok()?;
-        parse_named_session_socket_path(&command_output_text(&output), "workhive")
-    }
-
-    #[cfg(unix)]
     fn isolated_endpoint_status(socket: &std::path::Path) -> String {
         let output = Command::new("herdr")
             .env("HERDR_SOCKET_PATH", socket)
@@ -1778,7 +1768,7 @@ mod tests {
         let state = tempfile::tempdir().expect("state dir");
         std::fs::write(
             state.path().join(MANAGED_HERDR_RECORD),
-            r#"{"pid":1,"socket":"/tmp/herdr.sock","session":"workhive"}"#,
+            r#"{"pid":1,"socket":"/tmp/herdr.sock","session":"workhive-managed"}"#,
         )
         .expect("write tokenless record");
         let error = stop_managed_workhive_herdr_server_in(state.path(), false).unwrap_err();
@@ -2237,7 +2227,7 @@ mod tests {
         let socket = state
             .path()
             .join("sessions")
-            .join("workhive")
+            .join(WORKHIVE_HERDR_SESSION)
             .join("herdr.sock");
         let _listener = serve_protocol_22(&socket);
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -2419,10 +2409,24 @@ mod tests {
     #[test]
     #[ignore = "real-herdr: isolated endpoint lifecycle; must not touch the live workhive session"]
     fn real_herdr_isolated_stopped_server_and_stale_socket() {
-        let live = live_workhive_socket().expect("discover live Workhive Herdr socket");
+        let live = crate::test_env::with_exclusive_env(&[], || {
+            let output = Command::new("herdr")
+                .env_remove("HERDR_SOCKET_PATH")
+                .args([
+                    "--session",
+                    WORKHIVE_HERDR_SESSION,
+                    "status",
+                    "server",
+                    "--json",
+                ])
+                .output()
+                .ok()?;
+            parse_named_session_socket_path(&command_output_text(&output), WORKHIVE_HERDR_SESSION)
+        })
+        .expect("discover live Workhive Herdr socket");
         let live_status_before = Command::new("herdr")
-            .env_remove("HERDR_SOCKET_PATH")
-            .args(["--session", "workhive", "status", "server", "--json"])
+            .env("HERDR_SOCKET_PATH", &live)
+            .args(["status", "server", "--json"])
             .output()
             .expect("query live Herdr status");
         let live_before = String::from_utf8_lossy(&live_status_before.stdout).into_owned();
@@ -2547,8 +2551,8 @@ mod tests {
         );
 
         let live_status_after = Command::new("herdr")
-            .env_remove("HERDR_SOCKET_PATH")
-            .args(["--session", "workhive", "status", "server", "--json"])
+            .env("HERDR_SOCKET_PATH", &live)
+            .args(["status", "server", "--json"])
             .output()
             .expect("query live Herdr status after isolated test");
         let live_after = String::from_utf8_lossy(&live_status_after.stdout);
@@ -2556,6 +2560,5 @@ mod tests {
             live_after.contains("running") || live_after.contains("\"status\":\"running\""),
             "isolated lifecycle must leave the live session running: {live_after}"
         );
-        assert_eq!(live_workhive_socket().as_deref(), Some(live.as_path()));
     }
 }

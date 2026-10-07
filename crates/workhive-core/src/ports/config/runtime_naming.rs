@@ -22,7 +22,7 @@ pub const TMUX_CONFIG_SCHEMA_VERSION: u32 = 2;
 /// while an author's own template is preserved.
 const V1_DEFAULT_SERVER_TEMPLATE: &str = "whsrv-{instance_id}-{project}";
 
-pub const DEFAULT_HERDR_SESSION: &str = "workhive";
+pub const DEFAULT_HERDR_SESSION: &str = "workhive-managed";
 
 /// Herdr-specific native session configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

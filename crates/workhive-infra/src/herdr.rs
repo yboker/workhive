@@ -1076,16 +1076,39 @@ impl HerdrRuntimeAdapter {
     }
 }
 
+#[cfg(unix)]
+fn validate_herdr_session_name(session: &str, action: &str) -> Result<(), RuntimeError> {
+    if session.trim().is_empty() {
+        return Err(RuntimeError::OperationFailed {
+            message: format!("cannot {action} an empty Herdr session name"),
+        });
+    }
+    Ok(())
+}
+
+/// Resume a native Herdr session through Herdr's own session entry point.
+#[cfg(unix)]
+pub fn resume_session(session: &str) -> Result<(), RuntimeError> {
+    validate_herdr_session_name(session, "resume")?;
+
+    let mut command = std::process::Command::new(crate::dependency::herdr_program());
+    command
+        .arg("--session")
+        .arg(session)
+        // Workhive must not let an inherited test-only socket override
+        // redirect a production named-session client.
+        .env_remove("HERDR_SOCKET_PATH");
+    use std::os::unix::process::CommandExt;
+    Err(map_herdr_launch_error(command.exec()))
+}
+
 /// Invoke Herdr's native whole-session attach command.
 #[cfg(unix)]
 pub fn attach_session(session: &str) -> Result<(), RuntimeError> {
-    if session.trim().is_empty() {
-        return Err(RuntimeError::OperationFailed {
-            message: "cannot attach to an empty Herdr session name".to_owned(),
-        });
-    }
+    validate_herdr_session_name(session, "attach to")?;
     let status = std::process::Command::new(crate::dependency::herdr_program())
         .args(["session", "attach", session])
+        .env_remove("HERDR_SOCKET_PATH")
         .status()
         .map_err(map_herdr_launch_error)?;
     if status.success() {
@@ -2537,15 +2560,19 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    #[ignore = "real-herdr: requires the running default Workhive Herdr session"]
+    #[ignore = "real-herdr: requires the running Workhive-managed Herdr session"]
     fn real_herdr_protocol_and_workspace_list_smoke() {
-        let socket = crate::dependency::discover_workhive_herdr_socket_path()
-            .expect("discover the default Workhive Herdr socket");
-        let adapter = HerdrRuntimeAdapter::connect(socket).expect("connect to real Herdr");
+        // Socket discovery reads process-global HOME/XDG variables. Serialize
+        // this read with isolated Herdr tests that temporarily replace them.
+        crate::test_env::with_exclusive_env(&[], || {
+            let socket = crate::dependency::discover_workhive_herdr_socket_path()
+                .expect("discover the default Workhive Herdr socket");
+            let adapter = HerdrRuntimeAdapter::connect(socket).expect("connect to real Herdr");
 
-        adapter
-            .list_workspaces("")
-            .expect("list real Herdr workspaces");
+            adapter
+                .list_workspaces("")
+                .expect("list real Herdr workspaces");
+        });
     }
 
     #[cfg(unix)]

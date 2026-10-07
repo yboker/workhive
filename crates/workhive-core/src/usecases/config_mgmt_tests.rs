@@ -87,7 +87,10 @@ fn effective_herdr_session_inherits_project_global_then_builtin() {
         ..Default::default()
     };
 
-    assert_eq!(resolve_effective_herdr_session(None, None), "workhive");
+    assert_eq!(
+        resolve_effective_herdr_session(None, None),
+        "workhive-managed"
+    );
     assert_eq!(
         resolve_effective_herdr_session(None, Some(&global)),
         "shared"
