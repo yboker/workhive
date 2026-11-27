@@ -168,6 +168,7 @@ fn build_configured_layout_tree(
     Ok(combine(columns, PaneDirection::Right))
 }
 
+/// Apply a layout using the production PATH-based executable checker.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_layout(
     pane_runtime: &dyn PaneRuntimePort,
@@ -179,6 +180,37 @@ pub(crate) fn apply_layout(
     i18n: &dyn I18nPort,
     locale: Locale,
     instrumentation: Option<&dyn workhive_core::ports::ToolLaunchInstrumentationPort>,
+) -> LayoutResult {
+    let composition = CliComposition::new();
+    let exec_checker = composition.executable_checker();
+    apply_layout_with_exec_checker(
+        pane_runtime,
+        server,
+        session,
+        base_cwd,
+        layout,
+        catalog,
+        i18n,
+        locale,
+        instrumentation,
+        &exec_checker,
+    )
+}
+
+/// Apply a layout with an injected executable checker so callers (and tests)
+/// control which tool binaries count as available.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_layout_with_exec_checker(
+    pane_runtime: &dyn PaneRuntimePort,
+    server: &str,
+    session: &str,
+    base_cwd: &camino::Utf8Path,
+    layout: &LayoutConfig,
+    catalog: &ToolCatalog,
+    i18n: &dyn I18nPort,
+    locale: Locale,
+    instrumentation: Option<&dyn workhive_core::ports::ToolLaunchInstrumentationPort>,
+    exec_checker: &dyn workhive_core::ports::ExecutableAvailabilityPort,
 ) -> LayoutResult {
     use std::collections::HashMap;
     use workhive_core::domain::{PaneDirection, UnitId};
@@ -196,8 +228,6 @@ pub(crate) fn apply_layout(
         });
     }
 
-    let composition = CliComposition::new();
-    let exec_checker = composition.executable_checker();
     if pane_runtime.supports_configured_layout() {
         let all_resolved = plan
             .launches
@@ -209,7 +239,7 @@ pub(crate) fn apply_layout(
                     usecases::launch_resolver::resolve_launch(
                         &launch.launch,
                         catalog,
-                        &exec_checker,
+                        exec_checker,
                     ),
                     launch.launch.clone(),
                 )
@@ -408,7 +438,7 @@ pub(crate) fn apply_layout(
 
     for launch in &plan.launches {
         let resolved =
-            usecases::launch_resolver::resolve_launch(&launch.launch, catalog, &exec_checker);
+            usecases::launch_resolver::resolve_launch(&launch.launch, catalog, exec_checker);
 
         all_resolved.push((
             launch.col_index,
@@ -565,6 +595,37 @@ pub(crate) fn reassert_managed_pane_titles(
     }
 }
 
+/// `apply_layout` with a hermetic executable checker.
+///
+/// Layout tests assert on supervised tool panes, so they must not be affected
+/// by which tool binaries happen to exist on the machine running them.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_layout_hermetic(
+    pane_runtime: &dyn PaneRuntimePort,
+    server: &str,
+    session: &str,
+    base_cwd: &camino::Utf8Path,
+    layout: &LayoutConfig,
+    catalog: &ToolCatalog,
+    i18n: &dyn I18nPort,
+    locale: Locale,
+    instrumentation: Option<&dyn workhive_core::ports::ToolLaunchInstrumentationPort>,
+) -> LayoutResult {
+    apply_layout_with_exec_checker(
+        pane_runtime,
+        server,
+        session,
+        base_cwd,
+        layout,
+        catalog,
+        i18n,
+        locale,
+        instrumentation,
+        &super::test_support::AlwaysAvailableExecutables,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #[allow(unused_imports)]
@@ -666,7 +727,7 @@ mod tests {
             ],
         };
 
-        let output = apply_layout(
+        let output = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -739,7 +800,7 @@ mod tests {
             }],
         };
 
-        apply_layout(
+        apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -795,7 +856,7 @@ mod tests {
             ],
         };
 
-        apply_layout(
+        apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -846,7 +907,7 @@ mod tests {
             }],
         };
 
-        apply_layout(
+        apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",

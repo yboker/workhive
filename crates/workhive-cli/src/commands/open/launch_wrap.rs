@@ -156,7 +156,7 @@ mod tests {
             ],
         };
 
-        apply_layout(
+        apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -225,7 +225,7 @@ mod tests {
             }],
         };
 
-        apply_layout(
+        apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -285,7 +285,7 @@ mod tests {
             }],
         };
 
-        let result = apply_layout(
+        let result = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -336,7 +336,7 @@ mod tests {
             }],
         };
 
-        let result = apply_layout(
+        let result = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -431,7 +431,7 @@ mod tests {
             }],
         };
 
-        let out = apply_layout(
+        let out = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -503,7 +503,7 @@ mod tests {
             }],
         };
 
-        let out = apply_layout(
+        let out = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -555,7 +555,7 @@ mod tests {
             }],
         };
 
-        let out = apply_layout(
+        let out = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -602,7 +602,7 @@ mod tests {
             }],
         };
 
-        let out = apply_layout(
+        let out = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -645,7 +645,7 @@ mod tests {
             }],
         };
 
-        apply_layout(
+        apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",
@@ -698,7 +698,7 @@ mod tests {
             ],
         };
 
-        let out = apply_layout(
+        let out = apply_layout_hermetic(
             &runtime,
             "srv",
             "sess",

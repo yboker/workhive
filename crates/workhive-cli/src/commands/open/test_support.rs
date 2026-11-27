@@ -18,6 +18,19 @@ use workhive_core::usecases::env::{EffectiveEnvIssue, EnvSource};
 #[allow(unused_imports)]
 use workhive_testkit::fakes::{FakeI18n, FakeRuntime};
 
+/// Executable checker that reports every program as installed.
+///
+/// Layout tests must not depend on which tool binaries happen to exist on the
+/// machine running them, so they resolve launches through this checker instead
+/// of the production PATH-based one.
+pub(crate) struct AlwaysAvailableExecutables;
+
+impl workhive_core::ports::ExecutableAvailabilityPort for AlwaysAvailableExecutables {
+    fn is_available(&self, _program: &str) -> bool {
+        true
+    }
+}
+
 pub(crate) fn base_runtime() -> FakeRuntime {
     let runtime = FakeRuntime::new();
     runtime

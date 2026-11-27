@@ -71,7 +71,7 @@ fn apply_layout_succeeds_on_happy_path() {
     let layout = two_col_layout();
     let catalog = test_catalog();
     let instrumentation = FakeToolLaunchInstrumentation::new();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -99,7 +99,7 @@ fn apply_layout_fails_when_list_units_fails() {
     });
     let layout = two_col_layout();
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -135,7 +135,7 @@ fn apply_layout_fails_when_respawn_command_fails() {
     let layout = two_col_layout();
     let catalog = test_catalog();
     let instrumentation = FakeToolLaunchInstrumentation::new();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -166,7 +166,7 @@ fn apply_layout_fails_when_spawn_unit_fails() {
     });
     let layout = two_col_layout();
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -191,7 +191,7 @@ fn apply_layout_empty_layout_returns_error() {
     let i18n = FakeI18n::new();
     let layout = LayoutConfig::default();
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -236,7 +236,7 @@ fn apply_layout_three_equal_columns() {
         ],
     };
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -275,7 +275,7 @@ fn apply_layout_three_rows_single_column() {
         }],
     };
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -313,7 +313,7 @@ fn apply_layout_70_30_split() {
         ],
     };
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -371,7 +371,7 @@ fn apply_layout_multicol_multirow_combo() {
     };
     let catalog = test_catalog();
     let instrumentation = FakeToolLaunchInstrumentation::new();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
@@ -401,7 +401,7 @@ fn apply_layout_single_pane_returns_one() {
         }],
     };
     let catalog = test_catalog();
-    let result = apply_layout(
+    let result = apply_layout_hermetic(
         &runtime,
         "srv",
         "sess",
