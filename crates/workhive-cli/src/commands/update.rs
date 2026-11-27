@@ -44,7 +44,7 @@ fn target_triple() -> Result<&'static str, CliError> {
 /// Build the update configuration.
 ///
 /// Asset naming follows release.yml: `workhive-{version}-{target}.tar.gz`
-/// where version includes the 'v' prefix (e.g., "v2.0.0").
+/// where version includes the 'v' prefix (e.g., "v2.0.1").
 ///
 /// Supports authentication via `GITHUB_TOKEN` or `WORKHIVE_GITHUB_TOKEN` environment
 /// variables for private repositories.
