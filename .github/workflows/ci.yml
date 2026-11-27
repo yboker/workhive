@@ -25,6 +25,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The CLI integration tests run the real binary, whose dependency
+      # preflight requires a `tmux` executable. Ubuntu runners ship one;
+      # macOS runners do not, so install it there.
+      - name: Install tmux (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tmux
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
