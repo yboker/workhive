@@ -34,6 +34,18 @@ cargo build --release
 install -m 755 target/release/workhive ~/.local/bin/workhive
 ```
 
+To upgrade an installed binary in place, use the built-in updater:
+
+```bash
+workhive update --dry-run
+workhive update
+workhive update --target-version 2.0.1
+```
+
+`update` resolves the release asset for the current platform, verifies its
+SHA256 checksum, and replaces the binary atomically. It supports macOS and Linux
+(WSL included); set `GITHUB_TOKEN` or `WORKHIVE_GITHUB_TOKEN` for private forks.
+
 ## Quick Start
 
 ```bash
@@ -75,7 +87,7 @@ The resource commands are:
 
 | Area | Commands |
 |------|----------|
-| System | `init`, `config`, `doctor`, `completion` |
+| System | `init`, `config`, `doctor`, `completion`, `update` |
 | Projects | `project list`, `project reindex`, `project roots ...` |
 | Workspaces | `workspace open`, `list`, `attach`, `close`, `remove`, `destroy` |
 | Worktrees | `workspace worktree list`, `remove` |
@@ -104,6 +116,10 @@ workspace worktree remove [worktree] [--delete-branch|--keep-branch] [--force]
 rebuilds the selected runtime from the effective configuration. `remove` and
 `destroy` remove Workhive-managed resources; branch deletion is guarded and can
 be disabled with `--keep-branch`.
+
+Without a workspace name, `workspace open` opens an interactive selector over
+the project-root workspace (the currently checked-out branch) and any linked
+worktrees. Non-interactive callers must pass the name explicitly.
 
 `workspace close` is the tmux current-workspace detach/kill command. For Herdr,
 use `workspace attach`, `session attach`, or `workspace remove` as needed.
@@ -141,8 +157,9 @@ pane send <pane> <text> [--no-enter] [--force]
 Pane operations are available through both backends, but their mechanics differ.
 With tmux, pane targets may be a pane number or tmux id such as `%2`; shell/TUI
 panes require `--force` when targeted for raw input. With Herdr, targets are Herdr
-pane identities and Workhive calls Herdr's pane APIs. A Herdr attach focuses the
-persisted workspace and uses Herdr's native session attach path.
+pane identities and Workhive calls Herdr's pane APIs; Herdr supports right and
+down splits only, for both configured layouts and `pane split`. A Herdr attach
+focuses the persisted workspace and uses Herdr's native session attach path.
 
 `pane send` sends text to a selected pane. Verified AI panes receive the text
 through the backend runtime; shell, TUI, and unverified panes require
@@ -160,6 +177,9 @@ With `backend = "tmux"`, Workhive:
   OSC 52 clipboard configuration;
 - observes pane foreground processes and terminal state, with optional activity
   integrations and local notifications.
+
+Configured layouts are built from right and down splits on both backends;
+`pane split` with tmux also accepts `left` and `up`.
 
 The default session name is:
 
@@ -185,6 +205,12 @@ The global default Herdr session is `workhive-managed`; project `herdr.session` 
 it. Existing persisted workspace bindings remain authoritative until the selected
 workspace is explicitly rebuilt with `--force`.
 
+Workhive uses Herdr's workspace identity and persisted bindings. Herdr requires a
+compatible running server; when the configured session is the one Workhive
+reserves, Workhive can start a missing server through Herdr's documented
+detached launcher. Custom session bindings keep pointing at their persisted
+endpoint.
+
 ## Configuration
 
 Configuration is TOML. The backend setting accepts `tmux` or `herdr`, and
@@ -197,6 +223,8 @@ workhive config set herdr.session my-session
 workhive config set tmux.mouse false --global
 workhive config set tmux.clipboard false
 ```
+
+`tmux.mouse` and `tmux.clipboard` only affect the tmux backend.
 
 Important locations:
 

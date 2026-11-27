@@ -6,10 +6,10 @@
 # release. The sha256 values come from the *.tar.gz.sha256 assets uploaded by
 # the release workflow.
 class Workhive < Formula
-  desc "Tmux-based development workspace manager for parallel AI coding"
+  desc "Development workspace manager for parallel AI coding"
   homepage "https://github.com/yboker/workhive"
   version "REPLACE_VERSION"
-  license any_of: ["MIT", "Apache-2.0"]
+  license "MIT"
 
   on_macos do
     on_arm do

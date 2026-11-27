@@ -31,6 +31,18 @@ cargo build --release
 install -m 755 target/release/workhive ~/.local/bin/workhive
 ```
 
+就地升级已安装的二进制可以使用内置更新命令：
+
+```bash
+workhive update --dry-run
+workhive update
+workhive update --target-version 2.0.1
+```
+
+`update` 会解析当前平台的 release 资产、校验 SHA256，并原子替换二进制。支持
+macOS 和 Linux（含 WSL）；私有 fork 可设置 `GITHUB_TOKEN` 或
+`WORKHIVE_GITHUB_TOKEN`。
+
 ## 快速开始
 
 ```bash
@@ -68,7 +80,7 @@ workhive session resume workhive-managed
 
 | 类别 | 命令 |
 |------|------|
-| 系统 | `init`、`config`、`doctor`、`completion` |
+| 系统 | `init`、`config`、`doctor`、`completion`、`update` |
 | 项目 | `project list`、`project reindex`、`project roots ...` |
 | 工作区 | `workspace open`、`list`、`attach`、`close`、`remove`、`destroy` |
 | 工作树 | `workspace worktree list`、`remove` |
@@ -93,9 +105,12 @@ workspace worktree list
 workspace worktree remove [worktree] [--delete-branch|--keep-branch] [--force]
 ```
 
-`open` 创建或复用 Git worktree 和运行时工作区。不传名称时使用当前 Git 分支。
-`--force` 根据生效配置重建选定的运行时。`remove` 和 `destroy` 只清理 Workhive
-管理的资源；分支删除受保护，可以使用 `--keep-branch` 保留分支。
+`open` 创建或复用 Git worktree 和运行时工作区。`--force` 根据生效配置重建选定的
+运行时。`remove` 和 `destroy` 只清理 Workhive 管理的资源；分支删除受保护，可以使用
+`--keep-branch` 保留分支。
+
+不传工作区名称时，`workspace open` 打开交互选择器，可选项包括项目根工作区（当前
+检出的分支）和已链接的 worktree。非交互调用必须显式传入名称。
 
 `workspace close` 用于 tmux 当前工作区的 detach/kill。Herdr 工作区根据需要使用
 `workspace attach`、`session attach` 或 `workspace remove`。
@@ -132,8 +147,9 @@ pane send <pane> <text> [--no-enter] [--force]
 
 - tmux 使用 pane 编号或 tmux id（例如 `%2`）；向 shell 或 TUI 窗格发送原始输入时
   需要 `--force`。
-- Herdr 使用 Herdr pane identity，并调用 Herdr 的 pane API。Herdr 布局支持右侧和向下
-  的 split；接入时聚焦持久化 workspace，并使用 Herdr 的原生 session attach 路径。
+- Herdr 使用 Herdr pane identity，并调用 Herdr 的 pane API。Herdr 的配置布局和
+  `pane split` 都只支持右侧和向下的 split；接入时聚焦持久化 workspace，并使用 Herdr
+  的原生 session attach 路径。
 
 `pane send` 向选定窗格发送文本。已验证的 AI 窗格通过运行时接收文本；shell、TUI 和
 未验证窗格需要 `--force`。
@@ -149,6 +165,9 @@ pane send <pane> <text> [--no-enter] [--force]
 - 提供 tmux attach、detach、pane split/close/send、pane 标题、鼠标模式和 OSC 52
   剪贴板配置；
 - 观测窗格前台进程和终端状态，并可提供活动状态与本地通知。
+
+`tmux.mouse` 和 `tmux.clipboard` 只对 tmux 后端生效。两个后端都使用右侧和向下的
+split 构建配置布局；tmux 的 `pane split` 还接受 `left` 和 `up`。
 
 默认 session 名称：
 
@@ -244,6 +263,9 @@ workhive workspace open feature-auth --no-attach --init
 
 交互选择器和确认提示需要 TTY。自动化调用应显式传入工作区名称，并按需使用
 `--force`/`-f`。机器可读输出使用 `--view json`。
+
+Workhive 使用类型化错误和稳定的退出码分类，覆盖成功执行、参数无效、资源缺失、运行时
+失败和用户中断。
 
 ## 系统要求
 

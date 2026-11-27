@@ -24,7 +24,7 @@ to publish and update it.
 
 ## Publishing / updating a release
 
-1. Push a version tag (for example `v2.0.0`) and wait for the release
+1. Push a version tag (for example `v2.0.1`) and wait for the release
    workflow to publish the GitHub release with three tarballs and their
    `.sha256` files:
    - `workhive-<version>-aarch64-apple-darwin.tar.gz`
