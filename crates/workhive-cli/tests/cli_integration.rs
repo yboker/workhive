@@ -3112,13 +3112,18 @@ fn run_interactive_cli(
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
+    // `openpty` takes `*mut` for the terminal attributes and window size on the
+    // BSD family (macOS) but `*const` on Linux, so build the strongest form here
+    // and let the argument coercion weaken it where the platform needs `const`.
+    let initial_termios = std::ptr::null_mut::<libc::termios>();
+    let initial_size = (&size as *const libc::winsize).cast_mut();
     let opened = unsafe {
         libc::openpty(
             &mut master_fd,
             &mut slave_fd,
             std::ptr::null_mut(),
-            std::ptr::null(),
-            &size,
+            initial_termios,
+            initial_size,
         )
     };
     assert_eq!(
