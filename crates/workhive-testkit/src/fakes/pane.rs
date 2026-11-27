@@ -130,7 +130,7 @@ impl PaneRegistryPort for FakePaneRegistry {
     }
 
     fn drain_events(&self) -> Result<Vec<PaneLifecycleEvent>, RegistryError> {
-        Ok(self.lifecycle_events.borrow_mut().drain(..).collect())
+        Ok(std::mem::take(&mut *self.lifecycle_events.borrow_mut()))
     }
 
     fn update_from_observation(
@@ -276,6 +276,6 @@ impl PaneObserverPort for FakePaneObserver {
     }
 
     fn poll_events(&self) -> Vec<PaneEvent> {
-        self.events.borrow_mut().drain(..).collect()
+        std::mem::take(&mut *self.events.borrow_mut())
     }
 }

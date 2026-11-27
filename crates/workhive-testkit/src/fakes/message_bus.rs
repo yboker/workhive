@@ -78,7 +78,7 @@ impl PaneMessageBusPort for FakeMessageBus {
     }
 
     fn drain_events(&mut self) -> Result<Vec<MessageEvent>, PaneMessageBusError> {
-        Ok(self.events.drain(..).collect())
+        Ok(std::mem::take(&mut self.events))
     }
 }
 
